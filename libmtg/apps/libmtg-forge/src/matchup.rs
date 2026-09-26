@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fs::File, io::{BufWriter, Write}, path::Path, sync::Arc};
 
 use libmtg_decklist::Decklist;
 use libmtg_engine::{
@@ -57,9 +57,21 @@ pub struct MatchupStats {
     pub forge_wins: u64,
     pub opponent_wins: u64,
     pub unresolved: u64,
-    pub forge_win_pct_of_decided: f64,
+    pub invalid_games: u64,
+    pub forge_win_pct_of_decided: Option<f64>,
     pub on_play_games: u64,
     pub on_draw_games: u64,
+}
+
+#[derive(Serialize)]
+struct MatchupGameRecord<'a> {
+    game_index: u64,
+    game_seed: u64,
+    forge_on_play: bool,
+    winner: &'static str,
+    invalid_actions: u64,
+    turn_reached: u8,
+    log: &'a [String],
 }
 
 /// Full-engine runner. We intentionally require 100% implementation coverage;
@@ -71,6 +83,34 @@ pub fn run_matchup(
     seed: u64,
     max_turns: u8,
 ) -> Result<MatchupStats, String> {
+    run_matchup_inner(forge, opponent, games, seed, max_turns, None)
+}
+
+/// Record each game and its terminal result for replay and later outcome labeling.
+/// The event log is not yet a hidden-information-safe per-decision training set.
+pub fn run_matchup_with_trace(
+    forge: &Decklist,
+    opponent: &Decklist,
+    games: u64,
+    seed: u64,
+    max_turns: u8,
+    output: &Path,
+) -> Result<MatchupStats, String> {
+    let file = File::create(output).map_err(|e| format!("{}: {e}", output.display()))?;
+    let mut writer = BufWriter::new(file);
+    let stats = run_matchup_inner(forge, opponent, games, seed, max_turns, Some(&mut writer))?;
+    writer.flush().map_err(|e| format!("{}: {e}", output.display()))?;
+    Ok(stats)
+}
+
+fn run_matchup_inner(
+    forge: &Decklist,
+    opponent: &Decklist,
+    games: u64,
+    seed: u64,
+    max_turns: u8,
+    mut trace: Option<&mut dyn Write>,
+) -> Result<MatchupStats, String> {
     let catalog = build_catalog();
     ensure_supported("Forge", forge, &catalog)?;
     ensure_supported("Opponent", opponent, &catalog)?;
@@ -80,7 +120,8 @@ pub fn run_matchup(
         forge_wins: 0,
         opponent_wins: 0,
         unresolved: 0,
-        forge_win_pct_of_decided: 0.0,
+        invalid_games: 0,
+        forge_win_pct_of_decided: None,
         on_play_games: 0,
         on_draw_games: 0,
     };
@@ -95,6 +136,30 @@ pub fn run_matchup(
         }
 
         let state = simulate_one(forge, opponent, &catalog, game_seed, on_play, max_turns);
+        if let Some(writer) = trace.as_deref_mut() {
+            let record = MatchupGameRecord {
+                game_index: i,
+                game_seed,
+                forge_on_play: on_play,
+                winner: if state.invalid_actions > 0 { "invalid" } else {
+                    match state.winner {
+                        Some(PlayerId::Us) => "forge",
+                        Some(PlayerId::Opp) => "opponent",
+                        None => "unresolved",
+                    }
+                },
+                invalid_actions: state.invalid_actions,
+                turn_reached: state.current_turn,
+                log: &state.log,
+            };
+            serde_json::to_writer(&mut *writer, &record)
+                .map_err(|e| format!("matchup trace serialization failed: {e}"))?;
+            writer.write_all(b"\n").map_err(|e| format!("matchup trace write failed: {e}"))?;
+        }
+        if state.invalid_actions > 0 {
+            stats.invalid_games += 1;
+            continue;
+        }
         match state.winner {
             Some(PlayerId::Us) => stats.forge_wins += 1,
             Some(PlayerId::Opp) => stats.opponent_wins += 1,
@@ -104,7 +169,7 @@ pub fn run_matchup(
 
     let decided = stats.forge_wins + stats.opponent_wins;
     if decided > 0 {
-        stats.forge_win_pct_of_decided = 100.0 * stats.forge_wins as f64 / decided as f64;
+        stats.forge_win_pct_of_decided = Some(100.0 * stats.forge_wins as f64 / decided as f64);
     }
     Ok(stats)
 }
@@ -157,6 +222,9 @@ pub fn run_paired_matchup(
         let on_play = i % 2 == 0;
         let a = simulate_one(build_a, opponent, &catalog, game_seed, on_play, max_turns);
         let b = simulate_one(build_b, opponent, &catalog, game_seed, on_play, max_turns);
+        if a.invalid_actions > 0 || b.invalid_actions > 0 {
+            return Err(format!("invalid cast in paired matchup game {i}, seed {game_seed}; refusing to report win percentages"));
+        }
         let aw = a.winner == Some(PlayerId::Us);
         let bw = b.winner == Some(PlayerId::Us);
         out.build_a_wins += aw as u64;

@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use libmtg_decklist::Decklist;
 use libmtg_forge::{
     audit, compare_jev_to_search, compare_openings, compare_search_smoke, generate_training_jsonl,
-    jev_check_from_env, run_agent_smoke, run_agent_smoke_with_agent, run_matchup,
+    jev_check_from_env, run_agent_smoke, run_agent_smoke_with_agent, run_matchup, run_matchup_with_trace,
     run_paired_matchup, simulate_openings, JevForgeAgent,
 };
 
@@ -37,6 +37,15 @@ enum Command {
         forge: PathBuf,
         opponent: PathBuf,
         #[arg(long, default_value_t = 10_000)] games: u64,
+        #[arg(long, default_value_t = 1)] seed: u64,
+        #[arg(long, default_value_t = 12)] max_turns: u8,
+    },
+    /// Run full games and write one replayable outcome record per game as JSONL.
+    MatchupTrace {
+        forge: PathBuf,
+        opponent: PathBuf,
+        output: PathBuf,
+        #[arg(long, default_value_t = 100)] games: u64,
         #[arg(long, default_value_t = 1)] seed: u64,
         #[arg(long, default_value_t = 12)] max_turns: u8,
     },
@@ -115,6 +124,12 @@ fn run_cli() -> Result<(), String> {
             let f = load(&forge)?;
             let o = load(&opponent)?;
             let result = run_matchup(&f, &o, games, seed, max_turns)?;
+            println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        }
+        Command::MatchupTrace { forge, opponent, output, games, seed, max_turns } => {
+            let f = load(&forge)?;
+            let o = load(&opponent)?;
+            let result = run_matchup_with_trace(&f, &o, games, seed, max_turns, &output)?;
             println!("{}", serde_json::to_string_pretty(&result).unwrap());
         }
         Command::MatchupCompare { deck_a, deck_b, opponent, games, seed, max_turns } => {

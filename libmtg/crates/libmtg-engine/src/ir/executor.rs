@@ -1461,6 +1461,26 @@ pub(crate) fn cemod_to_modifier(
                 }),
             })
         }
+        CEMod::SetPT(p, t) => {
+            // Evaluate against the current battlefield on every recompute. In
+            // particular, a Saga Construct counts itself and all other artifacts
+            // its controller currently owns, rather than remaining a 0/0.
+            let p = p.clone();
+            let t = t.clone();
+            let env = env.clone();
+            Some(CeBuild {
+                layer: ContinuousLayer::L7PowerToughness,
+                reads: vec![CeReads::CardTypes],
+                writes: vec![CeWrites::PowerToughness],
+                modifier: std::sync::Arc::new(move |def, state| {
+                    let pv = expect_num(eval_expr(&p, state, &env)) as i32;
+                    let tv = expect_num(eval_expr(&t, state, &env)) as i32;
+                    if let CardKind::Creature(c) = &mut def.kind {
+                        c.adjust_pt(pv - c.power(), tv - c.toughness());
+                    }
+                }),
+            })
+        }
         CEMod::AddColor(color_expr) => {
             // CR 613.4 layer 5: add a color to every object in scope. The color is
             // an Expr so it can be runtime-chosen (Painter's Servant reads its own

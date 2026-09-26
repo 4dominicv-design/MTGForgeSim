@@ -52,7 +52,12 @@ impl ForgeStrategy {
 }
 
 impl Strategy for ForgeStrategy {
-    fn declare_attackers(&mut self, _state: &SimState) -> Vec<(ObjId, Option<ObjId>)> { Vec::new() }
+    fn declare_attackers(&mut self, state: &SimState) -> Vec<(ObjId, Option<ObjId>)> {
+        state.permanents_of(self.who)
+            .filter_map(|c| state.def_of(c.id)
+                .and_then(|d| d.is_creature().then_some((c.id, None))))
+            .collect()
+    }
     fn declare_blockers(&mut self, _state: &SimState) -> Vec<(ObjId, ObjId)> { Vec::new() }
 
     fn take_mulligan(&mut self, state: &SimState, mulligans_taken: u32) -> bool {
@@ -89,6 +94,21 @@ impl Strategy for ForgeStrategy {
                 && state.objects.get(&id).and_then(|o| o.bf()).map_or(false, |bf| !bf.tapped)
             {
                 continue;
+            }
+
+            // The priority pilot cannot improve its position by untapping an
+            // untapped artifact, and it has no combat plan for Key's second
+            // ability. Avoid retrying these actions at every priority window.
+            if let LegalAction::ActivateAbility { ability_index, .. } = action {
+                if name == "Manifold Key" {
+                    if *ability_index != 0 { continue; }
+                    let has_tapped_artifact = state.permanents_of(self.who).any(|perm| {
+                        perm.id != id
+                            && perm.bf().map_or(false, |bf| bf.tapped)
+                            && state.def_of(perm.id).map_or(false, |d| d.is_artifact())
+                    });
+                    if !has_tapped_artifact { continue; }
+                }
             }
 
             let score = Self::card_priority(name);

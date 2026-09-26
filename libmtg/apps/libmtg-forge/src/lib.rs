@@ -5,7 +5,7 @@ pub mod profile;
 pub mod search;
 pub mod strategy;
 
-pub use matchup::{audit, run_matchup, run_paired_matchup, DeckAudit, MatchupStats, PairedMatchupStats, PartialSupport};
+pub use matchup::{audit, run_matchup, run_matchup_with_trace, run_paired_matchup, DeckAudit, MatchupStats, PairedMatchupStats, PartialSupport};
 pub use profile::{compare_openings, simulate_openings, CompareStats, OpeningStats};
 
 pub use search::{compare_search_smoke, evaluate_forge_state, generate_training_jsonl, run_search_smoke_once, ForgeSearchConfig, ForgeSearchStrategy, PilotRunSummary, SearchSmokeComparison, TrainingGenerationStats};

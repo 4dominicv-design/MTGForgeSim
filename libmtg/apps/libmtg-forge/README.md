@@ -59,6 +59,29 @@ The Forge 75 and its current 13-card wishboard now have first-pass rules impleme
 
 The next bottleneck is no longer card registration; it is **pilot quality**. Improve Forge sequencing and matchup-specific opponent policies before interpreting full-game win percentages as deck-strength estimates.
 
+## First full-game benchmark
+
+The synthetic red benchmark uses implemented cards to exercise combat, damage,
+artifact interaction, and mana disruption. It is a rules/policy diagnostic,
+not a tuned tournament deck. Audit both lists, then start with a short trace:
+
+```bash
+cargo run --release -p libmtg-forge --bin forge-lab -- audit apps/libmtg-forge/examples/forge-trinisphere.txt
+cargo run --release -p libmtg-forge --bin forge-lab -- audit apps/libmtg-forge/examples/opponent-red-benchmark.txt
+cargo run --release -p libmtg-forge --bin forge-lab -- matchup-trace apps/libmtg-forge/examples/forge-trinisphere.txt apps/libmtg-forge/examples/opponent-red-benchmark.txt red-games.jsonl --games 10 --seed 1 --max-turns 12
+```
+
+Each JSONL row includes game index, seed, play/draw assignment, winner, turn,
+and game log. The printed `forge_win_pct_of_decided` excludes unresolved and
+invalid games; always inspect both counts. A failed cast or ability activation marks its game invalid,
+and its JSONL row includes `invalid_actions` and the game log. The opponent currently plays a
+land, casts the first legal spell, attacks with its creatures and never blocks.
+Forge now attacks with its creatures but also never blocks. These policies and
+the lack of sideboarding make the results unsuitable as Legacy matchup odds.
+The rows are replay/debug records, not hidden-information-safe state/action
+examples for policy training. Record decisions and opponent perspective before
+training from terminal outcomes.
+
 Every matchup run should record seed, play/draw, deck hashes/config versions, result, turn, and
 policy version so regressions and surprising games can be replayed.
 

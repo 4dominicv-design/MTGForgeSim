@@ -449,6 +449,9 @@ fn ability_available(
         state, crate::ir::ability::ActionKind::Activate, source_id) {
         return false;
     }
+    if !crate::loyalty_activation_allowed(state, who, source_id, ability) {
+        return false;
+    }
     // Sorcery-speed abilities (loyalty, etc.) require empty stack.
     if ability.timing == ActivationTiming::Sorcery && !state.stack.is_empty() {
         return false;
@@ -468,7 +471,8 @@ fn ability_available(
         // and infinite-loop on retry).
         let schema_ok = crate::ir::cost_exec::build_schema(action, state, who, source_id).is_some();
         let mana_ok = match ability.costs.first_mana_cost() {
-            Some(mc) => state.potential_mana(who).can_pay(&mc),
+            Some(mc) => crate::can_pay_with_auto_mana(state, who, &mc,
+                ability.costs.requires_tap_self().then_some(source_id)),
             None => true,
         };
         schema_ok && mana_ok
@@ -493,7 +497,8 @@ fn spell_is_affordable(
         cost.generic = (cost.generic - gy_len).max(0);
     }
     cost = crate::apply_casting_cost_rules(cost, def);
-    let mana_is_usable = !def.mana_cost().is_empty() && state.potential_mana(who).can_pay(&cost);
+    let mana_is_usable = !def.mana_cost().is_empty()
+        && crate::can_pay_with_auto_mana(state, who, &cost, None);
     let base_payable = if mana_is_usable {
         true
     } else {

@@ -997,6 +997,74 @@
     }
 
     #[test]
+    fn test_declare_attackers_rejects_sick_and_tapped_creatures() {
+        let mut state = make_state();
+        let fresh = add_perm(&mut state, PlayerId::Us, "Fresh", BattlefieldState::new());
+        let tapped = add_perm(&mut state, PlayerId::Us, "Tapped", BattlefieldState {
+            entered_this_turn: false, tapped: true, ..BattlefieldState::new()
+        });
+        let ready = add_perm(&mut state, PlayerId::Us, "Ready", BattlefieldState {
+            entered_this_turn: false, ..BattlefieldState::new()
+        });
+        state.set_strategy(PlayerId::Us, Box::new(strategy::TestStrategy::new(PlayerId::Us)
+            .attacking(vec![(fresh, None), (tapped, None), (ready, None)])));
+        do_step(&mut state, 1, PlayerId::Us,
+            &Step { kind: StepKind::DeclareAttackers, prio: false }, true);
+        assert_eq!(state.combat_attackers, vec![ready]);
+        assert!(!state.permanent_bf(fresh).unwrap().attacking);
+        assert!(!state.permanent_bf(tapped).unwrap().attacking);
+    }
+
+    #[test]
+    fn test_haste_creature_can_attack_on_entry_turn() {
+        let mut state = make_state();
+        let haste = add_default_perm(&mut state, PlayerId::Us, "Fantasticar Construct");
+        state.set_strategy(PlayerId::Us, Box::new(strategy::TestStrategy::new(PlayerId::Us)
+            .attacking(vec![(haste, None)])));
+        do_step(&mut state, 1, PlayerId::Us,
+            &Step { kind: StepKind::DeclareAttackers, prio: false }, true);
+        assert_eq!(state.combat_attackers, vec![haste]);
+    }
+
+    #[test]
+    fn test_saga_construct_counts_artifacts_and_survives_state_based_actions() {
+        let mut state = make_state();
+        state.catalog = test_catalog();
+        let token = do_create_token("Construct Token", PlayerId::Us, &mut state, 1);
+        let CardKind::Creature(initial) = &state.def_of(token).unwrap().kind else { panic!("Construct is a creature") };
+        assert_eq!((initial.power(), initial.toughness()), (1, 1));
+        check_state_based_actions(&mut state, 1);
+        assert!(state.permanent_bf(token).is_some(), "Construct counts itself as an artifact");
+
+        add_default_perm(&mut state, PlayerId::Us, "Manifold Key");
+        recompute(&mut state);
+        let CardKind::Creature(grown) = &state.def_of(token).unwrap().kind else { panic!("Construct is a creature") };
+        assert_eq!((grown.power(), grown.toughness()), (2, 2));
+    }
+
+    #[test]
+    fn test_karn_loyalty_can_activate_only_once_on_own_main_phase() {
+        let mut state = make_state();
+        let def = catalog_card("Karn, the Great Creator");
+        let karn = add_perm_with_def(&mut state, PlayerId::Us, &def,
+            BattlefieldState { loyalty: 5, ..BattlefieldState::new() });
+        let idx = def.abilities().iter().position(|a| a.loyalty_delta() == Some(-2)).unwrap();
+        let ability = def.abilities()[idx].clone();
+        let action = LegalAction::ActivateAbility { source_id: karn, ability_index: idx };
+        state.current_ap = state.player_id(PlayerId::Us);
+        state.current_phase = Some(TurnPosition::Step(StepKind::Upkeep));
+        recompute(&mut state);
+        assert!(!strategy::collect_legal_actions(&state, PlayerId::Us).contains(&action));
+        state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+        assert!(strategy::collect_legal_actions(&state, PlayerId::Us).contains(&action));
+        assert_ne!(run_activate_submachine(&mut state, 1, PlayerId::Us, karn, &ability), ObjId::UNSET);
+        assert_eq!(state.permanent_bf(karn).unwrap().loyalty, 3);
+        assert!(state.permanent_bf(karn).unwrap().pw_activated_this_turn);
+        assert!(!strategy::collect_legal_actions(&state, PlayerId::Us).contains(&action));
+        assert_eq!(run_activate_submachine(&mut state, 1, PlayerId::Us, karn, &ability), ObjId::UNSET);
+    }
+
+    #[test]
     fn test_declare_blockers_sets_unblocked_flag_when_no_blocker() {
         let mut state = make_state();
         let def = creature("Attacker", 2, 4);
@@ -9378,6 +9446,42 @@
             "filtering through Boulder must not increase total mana");
         assert!(pool.u >= 1 && pool.b >= 1 && pool.r >= 1 && pool.g >= 1 && pool.w >= 1,
             "Boulder should advertise its color-filtering capability once funded");
+    }
+
+    #[test]
+    fn test_auto_mana_affordability_does_not_fund_planar_nexus_with_itself() {
+        let mut state = make_state();
+        state.catalog = test_catalog();
+        let nexus = add_perm_with_def(&mut state, PlayerId::Us,
+            &catalog_card("Planar Nexus"), BattlefieldState::new());
+        recompute(&mut state);
+        let blue = parse_mana_cost("U");
+        assert!(state.potential_mana(PlayerId::Us).can_pay(&blue),
+            "the optimistic pool advertises Nexus's paid color filter");
+        assert!(!can_pay_with_auto_mana(&state, PlayerId::Us, &blue, None),
+            "Nexus cannot tap for colorless and use that mana to pay its own tap ability");
+
+        let tomb = add_perm_with_def(&mut state, PlayerId::Us,
+            &catalog_card("Ancient Tomb"), BattlefieldState::new());
+        recompute(&mut state);
+        let mut diagnostic = state.fork_for_search(0);
+        diagnostic.set_strategy(PlayerId::Us, Box::new(strategy::AlwaysPass::new(PlayerId::Us)));
+        eprintln!("before: pool={:?}, potential={:?}, abilities={:?}, available={:?}, plan={:?}",
+            diagnostic.player(PlayerId::Us).pool,
+            diagnostic.potential_mana(PlayerId::Us),
+            [nexus, tomb].iter()
+                .map(|id| (*id, diagnostic.def_of(*id).unwrap().mana_abilities().iter()
+                    .map(|ma| (ma.costs.first_mana_cost(), ma.produces.clone(), ma.produces_count))
+                    .collect::<Vec<_>>())).collect::<Vec<_>>(),
+            enumerate_mana_abilities(&diagnostic, PlayerId::Us).iter()
+                .map(|a| (a.source_id, a.ability_index)).collect::<Vec<_>>(),
+            auto_tap_plan_remaining(&diagnostic, PlayerId::Us, &blue)
+                .iter().map(|a| (a.source_id, a.ability_index, a.color_choice)).collect::<Vec<_>>());
+        run_mana_loop(&mut diagnostic, 1, PlayerId::Us, &blue);
+        eprintln!("after: pool={:?}, log={:?}", diagnostic.player(PlayerId::Us).pool, diagnostic.log);
+        assert!(can_pay_with_auto_mana(&state, PlayerId::Us, &blue, None));
+        assert!(!can_pay_with_auto_mana(&state, PlayerId::Us, &blue, Some(nexus)),
+            "a source reserved for a tap cost cannot also produce its payment");
     }
 
     #[test]

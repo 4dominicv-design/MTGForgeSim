@@ -1235,7 +1235,7 @@ fn end_phase() -> Phase {
 // ── Mana pool ─────────────────────────────────────────────────────────────────
 
 /// Mana tracking: all 5 colors + colorless tracked separately; total covers all available mana.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct ManaPool {
     pub w: i32,
     pub u: i32,
@@ -1460,8 +1460,8 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
     let mut used: HashSet<ObjId> = HashSet::new();
 
     // Helper: find a battlefield source producing `color` (or any if None).
-    let find_bf = |state: &SimState, used: &HashSet<ObjId>, color: Option<Color>| -> Option<(ObjId, usize, usize)> {
-        state.objects.iter().find_map(|(id, c)| {
+    let find_bf = |state: &SimState, used: &HashSet<ObjId>, color: Option<Color>, prefer_large: bool| -> Option<(ObjId, usize, usize)> {
+        let mut sources = state.objects.iter().filter_map(|(id, c)| {
             if used.contains(id) { return None; }
             if c.controller != who || !c.in_zone(Zone::Battlefield) { return None; }
             // Null Rod / Karn: don't plan to tap an artifact whose abilities are restricted.
@@ -1500,7 +1500,8 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
                 })
                 .max_by_key(|(_, ma)| (coverage(ma), ma.produces_count))?;
             Some((*id, idx, ma.produces_count))
-        })
+        });
+        if prefer_large { sources.max_by_key(|(_, _, count)| *count) } else { sources.next() }
     };
 
     // Specific colorless pips ({C}) are not generic: they require a source
@@ -1550,7 +1551,7 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
     ] {
         let mut remaining = need;
         while remaining > 0 {
-            if let Some((id, idx, _)) = find_bf(state, &used, Some(color)) {
+            if let Some((id, idx, _)) = find_bf(state, &used, Some(color), false) {
                 plan.push(ManaActivation { source_id: id, ability_index: idx, color_choice: Some(color) });
                 used.insert(id);
                 remaining -= 1;
@@ -1558,6 +1559,17 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
                 plan.push(ManaActivation { source_id: id, ability_index: idx, color_choice: Some(color) });
                 used.insert(id);
                 remaining -= 1;
+            } else if let Some((id, idx, _)) = find_bf(state, &used, None, true) {
+                // A colored mana filter may require generic mana to activate.
+                // Produce that mana first; the caller replans after this one
+                // activation and can then select the newly affordable filter.
+                plan.push(ManaActivation { source_id: id, ability_index: idx, color_choice: None });
+                used.insert(id);
+                break;
+            } else if let Some((id, idx)) = find_hand(state, &used, None) {
+                plan.push(ManaActivation { source_id: id, ability_index: idx, color_choice: None });
+                used.insert(id);
+                break;
             } else {
                 break;
             }
@@ -1579,7 +1591,7 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
     // Generic mana.
     let mut remaining_generic = cost.generic;
     while remaining_generic > 0 {
-        if let Some((id, idx, count)) = find_bf(state, &used, None) {
+        if let Some((id, idx, count)) = find_bf(state, &used, None, false) {
             plan.push(ManaActivation { source_id: id, ability_index: idx, color_choice: None });
             used.insert(id);
             remaining_generic -= count as i32;
@@ -1677,6 +1689,25 @@ fn run_mana_loop(
         }
         activations += 1;
     }
+}
+
+/// Check what the built-in mana pilot can actually pay, using an isolated game
+/// state so the estimate cannot tap lands, sacrifice cards, or spend life in the
+/// live game. The pooled color capabilities in `potential_mana` alone are not
+/// enough: a paid filter can consume a mana that estimate already counted.
+pub(crate) fn can_pay_with_auto_mana(
+    state: &SimState, who: PlayerId, cost: &ManaCost, reserve_tap_source: Option<ObjId>,
+) -> bool {
+    if state.player(who).pool.can_pay(cost) { return true; }
+    if !state.potential_mana(who).can_pay(cost) { return false; }
+    let mut trial = state.fork_for_search(0);
+    trial.set_strategy(who, Box::new(crate::strategy::AlwaysPass::new(who)));
+    if let Some(source) = reserve_tap_source {
+        if let Some(bf) = trial.permanent_bf_mut(source) { bf.tapped = true; }
+    }
+    let turn = trial.current_turn as u8;
+    run_mana_loop(&mut trial, turn, who, cost);
+    trial.player(who).pool.can_pay(cost)
 }
 
 /// Phase 3 cost-IR: pay an `Action`-shaped cost.
@@ -1927,6 +1958,8 @@ pub struct SimState {
     /// Strategy decision log — records *why* the strategy made each choice.
     /// Populated by draining strategy structs' internal buffers after each call.
     pub decision_log: Vec<String>,
+    /// Actions offered as legal that failed during execution; invalidates matchup outcomes.
+    pub invalid_actions: u64,
     /// Set when the game ends by normal rules (a player's life reaches 0, etc.). Holds the winner.
     pub winner: Option<PlayerId>,
     /// Set when the active `Objective` decides the run has ended (e.g. Doomsday
@@ -2048,6 +2081,7 @@ impl SimState {
             opp_id: self.opp_id,
             log: self.log.clone(),
             decision_log: self.decision_log.clone(),
+            invalid_actions: self.invalid_actions,
             winner: self.winner,
             terminal: self.terminal,
             opening_hand_us: self.opening_hand_us.clone(),
@@ -2091,6 +2125,7 @@ impl SimState {
             opp_id: ObjId::UNSET,
             log: Vec::new(),
             decision_log: Vec::new(),
+            invalid_actions: 0,
             winner: None,
             terminal: false,
             opening_hand_us: Vec::new(),
@@ -3384,6 +3419,11 @@ fn pay_ability_cost(
     // by `ability_available` and pre-filled by run_mana_loop above.
     let crate::ir::ability::CostBody::Ir(action) = &ability.costs;
     let ctx = pay_ir_cost(state, t, who, source_id, action, false)?;
+    if ability.loyalty_delta().is_some() {
+        if let Some(bf) = state.permanent_bf_mut(source_id) {
+            bf.pw_activated_this_turn = true;
+        }
+    }
     state.log(t, who, format!("Activate {} ability", source_name));
 
     // Log loyalty adjustment.
@@ -3537,6 +3577,8 @@ fn cast_spell(
     };
 
     if alt_cost.is_none() && !mana_is_usable {
+        eprintln!("[cast-reject] {}: base cost {:?}, pool {:?}, potential {:?}",
+            name, cost, state.player(who).pool, state.potential_mana(who));
         return None;
     }
 
@@ -3555,9 +3597,13 @@ fn cast_spell(
         chosen_x,
     );
     if !state.potential_mana(who).can_pay(&combined_mana) {
+        eprintln!("[cast-reject] {}: combined cost {:?} (X={}), pool {:?}, potential {:?}",
+            name, combined_mana, chosen_x, state.player(who).pool, state.potential_mana(who));
         return None;
     }
     if !can_pay_additional_ir_cost(state, who, card_id, &def.additional_costs, chosen_x) {
+        eprintln!("[cast-reject] {}: additional cost schema (X={}), pool {:?}",
+            name, chosen_x, state.player(who).pool);
         return None;
     }
 
@@ -4324,10 +4370,33 @@ fn run_cast_submachine(
     // ── PayCosts + Complete (CR 601.2h-i) ───────────────────────────────
     // cast_spell handles remaining payment (pool already filled by mana loop),
     // zone move, effect building, and event firing.
+    let pool_before_payment = state.player(who).pool.clone();
     let result = cast_spell(state, t, who, card_id, face, preferred_cost.as_ref(),
                announced_alt_index, &chosen_targets, chosen_x, chosen_mode);
+    if result.is_none() {
+        eprintln!("[cast-reject] {}: announcement={:?} X={}, pool_before={:?}, pool_after={:?}, zone_after={:?}",
+            state.objects.get(&card_id).map(|o| o.catalog_key.as_str()).unwrap_or("?"),
+            face, chosen_x, pool_before_payment, state.player(who).pool,
+            state.objects.get(&card_id).and_then(|o| o.zone()));
+    }
     state.casting_spell = None;
     result
+}
+
+/// Loyalty abilities require the controller's main phase, an empty stack,
+/// enough loyalty to pay a negative cost, and no prior activation this turn.
+pub(crate) fn loyalty_activation_allowed(
+    state: &SimState, who: PlayerId, source_id: ObjId, ability: &AbilityDef,
+) -> bool {
+    let Some(delta) = ability.loyalty_delta() else { return true };
+    state.active_player() == Some(who)
+        && matches!(state.current_phase, Some(TurnPosition::Phase(
+            PhaseKind::PreCombatMain | PhaseKind::PostCombatMain
+        )))
+        && state.stack.is_empty()
+        && state.permanent_bf(source_id).map_or(false, |bf| {
+            !bf.pw_activated_this_turn && bf.loyalty + delta >= 0
+        })
 }
 
 /// Activate sub-machine (CR 602.2b).
@@ -4341,6 +4410,9 @@ fn run_activate_submachine(
     source_id: ObjId,
     ability: &AbilityDef,
 ) -> ObjId {
+    if ability.loyalty_delta().is_some() && !loyalty_activation_allowed(state, who, source_id, ability) {
+        return ObjId::UNSET;
+    }
     // Recheck at execution too: callers may hold a stale action after the
     // source has tapped. Never spend mana or stack an unpaid activation.
     if ability.costs.requires_tap_self()
@@ -4381,6 +4453,10 @@ fn run_activate_submachine(
 
     // ── Pay costs ───────────────────────────────────────────────────────
     let Some(ctx) = pay_ability_cost(state, t, who, source_id, ability, is_hand_source) else {
+        eprintln!("[activate-reject] source={:?} name={} mana_cost={:?} pool={:?} tapped={:?} targets={:?}",
+            source_id, source_name_for_stack, ability.costs.first_mana_cost(),
+            state.player(who).pool, state.permanent_bf(source_id).map(|bf| bf.tapped),
+            chosen_targets);
         return ObjId::UNSET;
     };
 
@@ -4447,6 +4523,8 @@ fn apply_priority_action(
             };
             if !is_instant && !state.stack.is_empty() {
                 eprintln!("[priority] BUG: sorcery-speed {} on non-empty stack, treating as Pass", name);
+                state.invalid_actions += 1;
+                state.log(t, who, format!("INVALID CAST TIMING: {}", name));
                 check!(false, state, "priority", "BUG: sorcery-speed cast of {} on non-empty stack", name);
                 *last_passer = Some(who);
                 *priority_holder = if who == ap { nap } else { ap };
@@ -4461,6 +4539,8 @@ fn apply_priority_action(
                     let pool = &state.player(who).pool;
                     eprintln!("[priority] BUG: cast failed for {} by {} (pool B={} U={} tot={}, hand={})",
                         name, who, pool.b, pool.u, pool.total, state.hand_size(who));
+                    state.invalid_actions += 1;
+                    state.log(t, who, format!("INVALID CAST: {}", name));
                     check!(false, state, "priority", "BUG: cast failed");
                     *last_passer = Some(who);
                     *priority_holder = if who == ap { nap } else { ap };
@@ -4472,6 +4552,7 @@ fn apply_priority_action(
                 .and_then(|d| d.abilities().get(ability_index).cloned())
                 .unwrap_or_default();
             if run_activate_submachine(state, t, who, source_id, &ab) == ObjId::UNSET {
+                state.invalid_actions += 1;
                 // A failed attempt must not keep priority forever. Use the
                 // normal pass path, including resolution after two passes.
                 state.log(t, who, format!("Activation failed for {:?}; passing priority", source_id));
@@ -4877,8 +4958,17 @@ fn do_step(
             // Restriction abilities (e.g. Ensnaring Bridge) are legality gates,
             // not strategy hints. Drop any attacker forbidden by an active source.
             let decisions: Vec<(ObjId, Option<ObjId>)> = decisions.into_iter()
-                .filter(|(atk_id, _)| !crate::ir::executor::action_restricted(
-                    state, crate::ir::ability::ActionKind::Attack, *atk_id))
+                .filter(|(atk_id, _)| {
+                    let Some(obj) = state.objects.get(atk_id) else { return false };
+                    if obj.controller != ap { return false; }
+                    let Some(bf) = obj.bf() else { return false };
+                    if bf.tapped || (bf.entered_this_turn && !creature_has_keyword(*atk_id, Keyword::Haste, state)) {
+                        return false;
+                    }
+                    state.def_of(*atk_id).map_or(false, |d| d.types.contains(&CardType::Creature))
+                        && !crate::ir::executor::action_restricted(
+                            state, crate::ir::ability::ActionKind::Attack, *atk_id)
+                })
                 .collect();
             // Apply: mark each attacker on the battlefield. CR 702.20: vigilance skips the tap.
             for &(atk_id, target) in &decisions {
