@@ -1,0 +1,99 @@
+   Compiling libmtg-engine v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v5_3\MTGSim\libmtg\crates\libmtg-engine)
+warning: fields `produces` and `produces_count` are never read
+    --> crates\libmtg-engine\src\lib.rs:1177:5
+     |
+1174 | pub struct ManaAbilityOption {
+     |            ----------------- fields in this struct
+...
+1177 |     produces: Vec<Color>,
+     |     ^^^^^^^^
+1178 |     produces_count: usize,
+     |     ^^^^^^^^^^^^^^
+     |
+     = note: `ManaAbilityOption` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `take_sideboard_card` is never used
+    --> crates\libmtg-engine\src\lib.rs:2241:19
+     |
+2097 | impl SimState {
+     | ------------- method in this implementation
+...
+2241 |     pub(crate) fn take_sideboard_card(&mut self, who: PlayerId, index: usize) -> Option<String> {
+     |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: method `display` is never used
+  --> crates\libmtg-engine\src\catalog.rs:61:19
+   |
+56 | impl ManaCost {
+   | ------------- method in this implementation
+...
+61 |     pub(crate) fn display(&self) -> String {
+   |                   ^^^^^^^
+
+warning: method `as_land` is never used
+    --> crates\libmtg-engine\src\catalog.rs:1271:19
+     |
+ 967 | impl CardDef {
+     | ------------ method in this implementation
+...
+1271 |     pub(crate) fn as_land(&self) -> Option<&LandData> {
+     |                   ^^^^^^^
+
+warning: function `eff_ir` is never used
+  --> crates\libmtg-engine\src\effects.rs:59:15
+   |
+59 | pub(crate) fn eff_ir(who: PlayerId, action: crate::ir::action::Action) -> Effect {
+   |               ^^^^^^
+
+warning: function `eff_draw` is never used
+  --> crates\libmtg-engine\src\effects.rs:67:15
+   |
+67 | pub(crate) fn eff_draw(who: PlayerId, n: usize) -> Effect {
+   |               ^^^^^^^^
+
+warning: function `eff_sacrifice` is never used
+   --> crates\libmtg-engine\src\effects.rs:234:15
+    |
+234 | pub(crate) fn eff_sacrifice(caster: PlayerId, who: Who, filter: Filter) -> Effect {
+    |               ^^^^^^^^^^^^^
+
+warning: function `eff_bounce_target` is never used
+   --> crates\libmtg-engine\src\effects.rs:286:15
+    |
+286 | pub(crate) fn eff_bounce_target(caster: PlayerId) -> Effect {
+    |               ^^^^^^^^^^^^^^^^^
+
+warning: function `eff_reanimate` is never used
+   --> crates\libmtg-engine\src\effects.rs:296:15
+    |
+296 | pub(crate) fn eff_reanimate(actor: PlayerId) -> Effect {
+    |               ^^^^^^^^^^^^^
+
+warning: function `eff_fetch_search` is never used
+   --> crates\libmtg-engine\src\effects.rs:474:15
+    |
+474 | pub(crate) fn eff_fetch_search(
+    |               ^^^^^^^^^^^^^^^^
+
+warning: field `set_to_index` is never read
+   --> crates\libmtg-engine\src\snapshot.rs:130:5
+    |
+129 | pub struct CardRegistry {
+    |            ------------ field in this struct
+130 |     set_to_index: HashMap<String, u16>,
+    |     ^^^^^^^^^^^^
+
+   Compiling libmtg-forge v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v5_3\MTGSim\libmtg\apps\libmtg-forge)
+warning: `libmtg-engine` (lib) generated 11 warnings
+    Finished `release` profile [optimized] target(s) in 37.27s
+     Running `target\release\forge-lab.exe generate-training apps/libmtg-forge/examples/forge-trinisphere.txt training-check.jsonl --games 10 --seed 1 --max-turns 3 --rollouts 1`
+{
+  "evaluator_version": "forge_eval_v2",
+  "games": 10,
+  "decisions_written": 97,
+  "seed": 1,
+  "max_turns": 3,
+  "rollouts_per_action": 1,
+  "output": "training-check.jsonl"
+}

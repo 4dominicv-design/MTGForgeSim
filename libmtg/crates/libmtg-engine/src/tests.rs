@@ -3484,6 +3484,29 @@
     }
 
     #[test]
+    fn test_funded_filter_does_not_consume_generic_mana_source() {
+        let mut state = make_state();
+        state.catalog = test_catalog();
+        let boulder = catalog_card("Giant's Boulder");
+        let boulder_id = add_perm_with_def(&mut state, PlayerId::Us, &boulder, BattlefieldState::new());
+        let wastes = catalog_card("Wastes");
+        let wastes_id = add_perm_with_def(&mut state, PlayerId::Us, &wastes, BattlefieldState::new());
+        let card_id = add_hand_card(&mut state, PlayerId::Us, "Grim Monolith");
+        state.player_mut(PlayerId::Us).pool.c = 1;
+        state.player_mut(PlayerId::Us).pool.total = 1;
+        state.current_turn = 1;
+        state.current_ap = state.player_id(PlayerId::Us);
+        state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+        recompute(&mut state);
+
+        let residual = ManaCost { generic: 1, ..Default::default() };
+        let plan = auto_tap_plan_remaining(&state, PlayerId::Us, &residual);
+        assert_eq!(plan.first().map(|a| a.source_id), Some(wastes_id));
+        assert!(!plan.iter().any(|a| a.source_id == boulder_id));
+        assert!(run_cast_submachine(&mut state, 1, PlayerId::Us, card_id, SpellFace::Main).is_some());
+    }
+
+    #[test]
     fn test_forge_spells_offered_by_mana_predictor_actually_cast_with_residual_source() {
         for (name, floating) in [
             ("Grim Monolith", 1),

@@ -1497,6 +1497,10 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
                         && (!ma_requires_tap(ma) || !bf.tapped)
                         && ma.condition.as_ref().map_or(true, |cond| obj_matches(cond, *id, state))
                         && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
+                        // A paid filter (e.g. Giant's Boulder: pay {1}, add one)
+                        // cannot fill a generic shortfall: it adds no net mana.
+                        && (color.is_some() || ma.costs.first_mana_cost()
+                            .map_or(true, |mc| ma.produces_count as i32 > mc.mana_value()))
                         && color.map_or(true, |c| ma.produces.contains(&c))
                 })
                 .max_by_key(|(_, ma)| (coverage(ma), ma.produces_count))?;
@@ -1522,6 +1526,8 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
                         && (!ma_requires_tap(ma) || !bf.tapped)
                         && ma.condition.as_ref().map_or(true, |cond| obj_matches(cond, *id, state))
                         && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
+                        && ma.costs.first_mana_cost()
+                            .map_or(true, |mc| ma.produces_count as i32 > mc.mana_value())
                         && ma.condition.as_ref().map_or(true, |cond| obj_matches(cond, *id, state))
                         // Colorless producers encode no W/U/B/R/G entries.
                         && ma.produces.is_empty()
@@ -1541,6 +1547,8 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
                 ma.activatable
                     && matches!(ma.source_zone, SourceZone::Hand)
                     && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
+                    && (color.is_some() || ma.costs.first_mana_cost()
+                        .map_or(true, |mc| ma.produces_count as i32 > mc.mana_value()))
                     && color.map_or(true, |col| ma.produces.contains(&col))
             })?;
             Some((c.id, idx))
