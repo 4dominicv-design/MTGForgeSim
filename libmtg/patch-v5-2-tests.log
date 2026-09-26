@@ -1,0 +1,407 @@
+ Downloading crates ...
+  Downloaded colored v2.2.0
+  Downloaded bytemuck v1.25.0
+  Downloaded drawille v0.3.0
+  Downloaded rgb v0.8.53
+  Downloaded fnv v1.0.7
+  Downloaded lazy_static v1.5.0
+  Downloaded windows-targets v0.52.6
+  Downloaded textplots v0.8.7
+  Downloaded windows_x86_64_msvc v0.52.6
+  Downloaded windows-sys v0.59.0
+   Compiling windows_x86_64_msvc v0.52.6
+   Compiling libmtg-engine v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v4_9\MTGSim\libmtg\crates\libmtg-engine)
+   Compiling lazy_static v1.5.0
+   Compiling fnv v1.0.7
+   Compiling bytemuck v1.25.0
+   Compiling libmtg-decklist v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v4_9\MTGSim\libmtg\crates\libmtg-decklist)
+   Compiling rgb v0.8.53
+   Compiling windows-targets v0.52.6
+   Compiling windows-sys v0.59.0
+   Compiling colored v2.2.0
+warning: fields `produces` and `produces_count` are never read
+    --> crates\libmtg-engine\src\lib.rs:1177:5
+     |
+1174 | pub struct ManaAbilityOption {
+     |            ----------------- fields in this struct
+...
+1177 |     produces: Vec<Color>,
+     |     ^^^^^^^^
+1178 |     produces_count: usize,
+     |     ^^^^^^^^^^^^^^
+     |
+     = note: `ManaAbilityOption` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `take_sideboard_card` is never used
+    --> crates\libmtg-engine\src\lib.rs:2229:19
+     |
+2085 | impl SimState {
+     | ------------- method in this implementation
+...
+2229 |     pub(crate) fn take_sideboard_card(&mut self, who: PlayerId, index: usize) -> Option<String> {
+     |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: method `display` is never used
+  --> crates\libmtg-engine\src\catalog.rs:61:19
+   |
+56 | impl ManaCost {
+   | ------------- method in this implementation
+...
+61 |     pub(crate) fn display(&self) -> String {
+   |                   ^^^^^^^
+
+warning: method `as_land` is never used
+    --> crates\libmtg-engine\src\catalog.rs:1271:19
+     |
+ 967 | impl CardDef {
+     | ------------ method in this implementation
+...
+1271 |     pub(crate) fn as_land(&self) -> Option<&LandData> {
+     |                   ^^^^^^^
+
+warning: function `eff_ir` is never used
+  --> crates\libmtg-engine\src\effects.rs:59:15
+   |
+59 | pub(crate) fn eff_ir(who: PlayerId, action: crate::ir::action::Action) -> Effect {
+   |               ^^^^^^
+
+warning: function `eff_draw` is never used
+  --> crates\libmtg-engine\src\effects.rs:67:15
+   |
+67 | pub(crate) fn eff_draw(who: PlayerId, n: usize) -> Effect {
+   |               ^^^^^^^^
+
+warning: function `eff_sacrifice` is never used
+   --> crates\libmtg-engine\src\effects.rs:234:15
+    |
+234 | pub(crate) fn eff_sacrifice(caster: PlayerId, who: Who, filter: Filter) -> Effect {
+    |               ^^^^^^^^^^^^^
+
+warning: function `eff_bounce_target` is never used
+   --> crates\libmtg-engine\src\effects.rs:286:15
+    |
+286 | pub(crate) fn eff_bounce_target(caster: PlayerId) -> Effect {
+    |               ^^^^^^^^^^^^^^^^^
+
+warning: function `eff_reanimate` is never used
+   --> crates\libmtg-engine\src\effects.rs:296:15
+    |
+296 | pub(crate) fn eff_reanimate(actor: PlayerId) -> Effect {
+    |               ^^^^^^^^^^^^^
+
+warning: function `eff_fetch_search` is never used
+   --> crates\libmtg-engine\src\effects.rs:474:15
+    |
+474 | pub(crate) fn eff_fetch_search(
+    |               ^^^^^^^^^^^^^^^^
+
+warning: field `set_to_index` is never read
+   --> crates\libmtg-engine\src\snapshot.rs:130:5
+    |
+129 | pub struct CardRegistry {
+    |            ------------ field in this struct
+130 |     set_to_index: HashMap<String, u16>,
+    |     ^^^^^^^^^^^^
+
+   Compiling drawille v0.3.0
+   Compiling textplots v0.8.7
+   Compiling libmtg-forge v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v4_9\MTGSim\libmtg\apps\libmtg-forge)
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2196:41
+     |
+2196 |         let CostBody::Ir(action) = cost else { unreachable!() };
+     |         ------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+     = note: `#[warn(irrefutable_let_patterns)]` on by default
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2215:51
+     |
+2215 |         let CostBody::Ir(action) = &alts[0].costs else {
+     |         ----------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2241:51
+     |
+2241 |         let CostBody::Ir(action) = &alts[0].costs else {
+     |         ----------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2268:51
+     |
+2268 |         let CostBody::Ir(action) = &alts[0].costs else {
+     |         ----------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2298:51
+     |
+2298 |         let CostBody::Ir(action) = &alts[0].costs else {
+     |         ----------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2321:46
+     |
+2321 |         let CostBody::Ir(action) = &ab.costs else {
+     |         ------------------------------------ ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2369:46
+     |
+2369 |         let CostBody::Ir(action) = &ab.costs else { panic!("expected Ir cost") };
+     |         ------------------------------------ ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2419:41
+     |
+2419 |         let CostBody::Ir(action) = cost else { unreachable!() };
+     |         ------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2445:41
+     |
+2445 |         let CostBody::Ir(action) = cost else {
+     |         ------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unused variable: `state`
+    --> crates\libmtg-engine\src\tests.rs:2691:19
+     |
+2691 |     fn kaito_zero(state: &mut SimState) -> Effect {
+     |                   ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\tests.rs:3297:67
+     |
+3297 |         let crate::ir::ability::CostBody::Ir(action) = &alt.costs else {
+     |         --------------------------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: methods `block_order` and `damage_assignment` are never used
+   --> crates\libmtg-engine\src\strategy.rs:349:19
+    |
+326 | impl TestStrategy {
+    | ----------------- methods in this implementation
+...
+349 |     pub(crate) fn block_order(mut self, order: Vec<ObjId>) -> Self { self.block_order = Some(order); self }
+    |                   ^^^^^^^^^^^
+350 |     /// Override the combat-damage split across ordered blockers.
+351 |     pub(crate) fn damage_assignment(mut self, d: Vec<i32>) -> Self { self.damage_assignment = Some(d); self }
+    |                   ^^^^^^^^^^^^^^^^^
+
+warning: `libmtg-engine` (lib) generated 11 warnings
+   Compiling libmtg-doomsday v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v4_9\MTGSim\libmtg\apps\libmtg-doomsday)
+warning: method `is_tap` is never used
+  --> apps\libmtg-doomsday\src\planner.rs:48:19
+   |
+46 | impl PlanAction {
+   | --------------- method in this implementation
+47 |     /// True if this is a mana-tapping action (handled by the mana sub-loop, not priority).
+48 |     pub(crate) fn is_tap(&self) -> bool {
+   |                   ^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `libmtg-engine` (lib test) generated 16 warnings (4 duplicates) (run `cargo fix --lib -p libmtg-engine --tests` to apply 1 suggestion)
+warning: `libmtg-doomsday` (lib test) generated 1 warning (1 duplicate)
+warning: `libmtg-doomsday` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 27.70s
+     Running unittests src\lib.rs (target\debug\deps\libmtg_doomsday-606655bc56ca7257.exe)
+
+running 149 tests
+test goldfish::mull::tests::realistic_keeps_almost_car_with_a_dig ... ok
+test goldfish::recipe::tests::baseline_oracle_requires_a_seed_for_rituals ... ok
+test goldfish::recipe::tests::cabal_ritual_swamp_island_is_turn_two ... ok
+test goldfish::mull::tests::keep7_never_mulligans_and_floor_holds ... ok
+test goldfish::recipe::tests::brainstorm_burst_casts_when_a_piece_arrives ... ok
+test goldfish::recipe::tests::battlefield_searcher_is_not_a_payoff_tutor ... ok
+test goldfish::recipe::tests::car_line_via_self_daze ... ok
+test goldfish::recipe::tests::car_pop_turn_car_in_hand_t1_off_petals ... ok
+test goldfish::recipe::tests::cantrips_plus_half_score_high_cantrips_alone_low ... ok
+test goldfish::mull::tests::realistic_scales_with_hand_size ... ok
+test goldfish::recipe::tests::car_pop_turn_car_in_hand_three_baubles_t3 ... ok
+test goldfish::recipe::tests::car_pop_shortfall_one_away_for_ponder_hand ... ok
+test goldfish::recipe::tests::debug_sample_car_hands ... ignored
+test goldfish::recipe::tests::car_pop_turn_with_car_in_play ... ok
+test goldfish::recipe::tests::car_pop_turn_needs_car_and_enough_free ... ok
+test goldfish::recipe::tests::car_pop_sample_hands ... ok
+test goldfish::recipe::tests::daze_self_counter_needs_an_island ... ok
+test goldfish::recipe::tests::car_pop_turn_three_petals_no_land_fails ... ok
+test goldfish::recipe::tests::doomsday_in_hand_beats_the_tutor_line ... ok
+test goldfish::recipe::tests::deterministic_send_turn_takes_the_faster_wincon ... ok
+test goldfish::recipe::tests::fetch_in_hand_to_ritual ... ok
+test goldfish::recipe::tests::extra_petal_speeds_up_deterministic_doomsday ... ok
+test goldfish::recipe::tests::ground_truth_vs_strategy ... ignored, intuition harness; prints ground-truth vs strategy, run with --ignored --nocapture
+test goldfish::recipe::tests::in_play_source_plus_ritual_is_turn_one ... ok
+test goldfish::recipe::tests::force_self_counter_needs_blue_to_pitch ... ok
+test goldfish::recipe::tests::known_doomsday_on_top_makes_a_no_dd_hand_castable ... ok
+test goldfish::recipe::tests::known_card_on_top_accelerates_by_draw_timing ... ok
+test goldfish::recipe::tests::land_land_land_petal_tutor_is_t2_not_t3 ... ok
+test goldfish::recipe::tests::land_land_petal_tutor_is_t2 ... ok
+test goldfish::mull::tests::realistic_matches_human_blind_calls ... ok
+test goldfish::recipe::tests::line_base_bbb_dd_in_hand ... ok
+test goldfish::recipe::tests::line_crack_inplay_fetch_reduces ... ok
+test goldfish::recipe::tests::line_fetch_in_hand_developed_first ... ok
+test goldfish::recipe::tests::line_petal_reduces ... ok
+test goldfish::recipe::tests::line_land_drop_reduces ... ok
+test goldfish::recipe::tests::line_ritual_reduces_to_base ... ok
+test goldfish::recipe::tests::mana_cost_parse_and_generic_reach ... ok
+test goldfish::recipe::tests::line_tutor_develops_pip_source_not_swamp ... ok
+test goldfish::recipe::tests::line_tutor_is_turn_two ... ok
+test goldfish::recipe::tests::one_land_drop_per_turn ... ok
+test goldfish::recipe::tests::no_doomsday_is_insufficient ... ok
+test goldfish::recipe::tests::one_source_never_reaches_bbb_deterministically ... ok
+test goldfish::recipe::tests::personal_tutor_needs_a_source_of_its_pip_colour ... ok
+test goldfish::recipe::tests::personal_tutor_acquires_doomsday_one_turn_late ... ok
+test goldfish::recipe::tests::petal_petal_ritual_tutor_is_t2 ... ok
+test goldfish::recipe::tests::personal_tutor_needs_doomsday_in_the_library ... ok
+test goldfish::recipe::tests::ponder_keeps_a_useful_top_and_shuffles_a_brick ... ok
+test goldfish::recipe::tests::pt_deterministic_curve ... ignored, intuition: deterministic cast rate vs PT count
+test goldfish::recipe::tests::put_back_finds_car_in_revealed_pieces ... ok
+test goldfish::recipe::tests::reach_black_parity_with_generic_solver ... ok
+test goldfish::recipe::tests::replan_finds_faster_line_on_new_info ... ok
+test goldfish::recipe::tests::ritual_without_a_seed_cannot_cast ... ok
+test goldfish::recipe::tests::sewers_comes_online_after_a_pass ... ok
+test goldfish::recipe::tests::solve_pop_contract ... ok
+test goldfish::recipe::tests::surveil_dual_land_drop_makes_no_mana_this_turn ... ok
+test goldfish::recipe::tests::tamiyo_flip_turn_recognizes_fast_lines ... ok
+test goldfish::recipe::tests::three_black_in_play ... ok
+test goldfish::recipe::tests::three_taplands_are_a_turn_four_line_so_out_of_range ... ok
+test goldfish::recipe::tests::three_untapped_lands_in_hand_cast_by_turn_three ... ok
+test goldfish::recipe::tests::two_seas_gap_is_land_petal_or_ritual ... ok
+test goldfish::recipe::tests::two_seas_plus_petal ... ok
+test goldfish::recipe::tests::two_seas_plus_ritual ... ok
+test goldfish::recipe::tests::ub_deck_yields_the_five_bundles ... ok
+test goldfish::strategy::tests::personal_tutor_stages_doomsday_not_another_sorcery ... ok
+test goldfish::strategy::tests::personal_tutor_stages_doomsday_over_a_redundant_tutor ... ok
+test goldfish::recipe::tests::expected_draws_to_out_matches_negative_hypergeometric ... ok
+test goldfish::recipe::tests::p_at_least_one_matches_hypergeometric ... ok
+test goldfish::recipe::tests::deterministic_cast_rate_matches_hypergeometric ... ok
+test goldfish::tests::compare_vroomsday_vs_tempo_t3 ... ignored
+test goldfish::tests::dbg_send_sequence_live ... ignored
+test goldfish::tests::debug_car_game_logs ... ignored
+test goldfish::tests::debug_car_only_decomp ... ignored
+test goldfish::tests::debug_trace_car_game ... ignored
+test goldfish::tests::debug_twohead_hand ... ignored
+test goldfish::recipe::tests::e_ttd_ranks_fast_pt_below_waste ... ok
+test goldfish::recipe::tests::pt_aware_cast_rate_matches_hypergeometric ... ok
+test goldfish::tests::self_daze_line_pops_on_turn_one ... ok
+test goldfish::tests::send_sequence_condenses_the_car_line ... ok
+test goldfish::tests::send_sequence_shows_drawn_cards ... ok
+test goldfish::tests::validate_almost_car_keep_hands ... ignored
+test goldfish::tests::vroomsday_deck_is_sixty_and_all_known ... ok
+test tests::plan_direct_dd_cast ... ok
+test tests::plan_empty_hand_passes ... ok
+test tests::plan_land_drop_enables_dd ... ok
+test tests::plan_land_drop_plus_cantrip ... ok
+test tests::plan_no_dd_casts_cantrip ... ok
+test tests::plan_no_mana_for_spell ... ok
+test tests::plan_petal_on_board_ritual_dd ... ok
+test tests::plan_prefers_dd_over_cantrip ... ok
+test tests::plan_ritual_path ... ok
+test tests::plan_ritual_without_dd_not_cast ... ok
+test tests::stress_invariant_check ... ignored
+test tests::test_dd_always_keeps_at_4 ... ok
+test tests::test_dd_card_fills_cantrip_always_medium ... ok
+test tests::test_dd_card_fills_doomsday_very_high ... ok
+test tests::test_dd_card_fills_fow_high_when_interaction_needed ... ok
+test tests::test_dd_card_fills_land_high_when_needed ... ok
+test tests::test_dd_card_fills_land_low_when_flooded ... ok
+test tests::test_dd_card_fills_oracle_near_zero ... ok
+test tests::test_dd_card_fills_second_dd_low ... ok
+test tests::test_dd_keep_fetch_hand ... ok
+test tests::test_dd_keep_good_hand ... ok
+test tests::test_dd_keep_usea_cantrips ... ok
+test tests::test_dd_london_bottom_picks_worst_cards ... ok
+test tests::test_dd_mull_6_card_lenient ... ok
+test tests::test_dd_mull_all_mana_no_action ... ok
+test tests::test_dd_mull_land_flood ... ok
+test tests::test_dd_mull_no_land_hand ... ok
+test tests::test_dd_mull_truly_no_mana ... ok
+test tests::test_dd_mull_wasteland_only ... ok
+test tests::test_dd_plan_gap_dd_in_hand_zeroes_threat ... ok
+test tests::test_dd_plan_gap_interaction_high_vs_blue ... ok
+test tests::test_dd_plan_gap_interaction_low_vs_nonblue ... ok
+test tests::test_dd_plan_gap_lands_reduce_mana_gap ... ok
+test tests::test_dd_plan_gap_no_hand_all_gaps_high ... ok
+test tests::test_declare_attackers_safe_to_attack ... ok
+test tests::test_declare_attackers_summoning_sickness ... ok
+test tests::test_declare_attackers_too_risky ... ok
+test tests::test_declare_blockers_good_block ... ok
+test tests::test_declare_blockers_no_chump ... ok
+test tests::test_doomsday_resolved_objective_ends_sim ... ok
+test tests::test_flying_attack_safety_ignores_ground ... ok
+test tests::test_flying_attacker_avoids_reach_blocker ... ok
+test tests::test_opp_always_keeps_at_4 ... ok
+test tests::test_opp_card_fills_cantrip_medium ... ok
+test tests::test_opp_card_fills_creature_high ... ok
+test tests::test_opp_card_fills_fow_high_vs_combo ... ok
+test tests::test_opp_card_fills_land_high_when_needed ... ok
+test tests::test_opp_card_fills_land_low_when_flooded ... ok
+test tests::test_opp_card_fills_surplus_creature_lower ... ok
+test tests::test_opp_keep_fetch_hand ... ok
+test tests::test_opp_keep_good_hand ... ok
+test tests::test_opp_london_bottom_picks_worst ... ok
+test tests::test_opp_mull_all_interaction_no_threats ... ok
+test tests::test_opp_mull_land_flood ... ok
+test tests::test_opp_mull_no_land ... ok
+test tests::test_opp_mull_wasteland_only ... ok
+test tests::test_opp_plan_gap_creature_reduces_threat ... ok
+test tests::test_opp_plan_gap_interaction_low_vs_aggro ... ok
+test tests::test_opp_plan_gap_lands_reduce_mana ... ok
+test tests::test_opp_plan_gap_no_board_all_gaps_high ... ok
+test tests::validation_stats ... ignored
+test goldfish::recipe::tests::four_personal_tutors_speed_up_deterministic_doomsday ... ok
+test goldfish::learned_explorer_smoke::report_and_estimates_smoke ... ok
+test goldfish::tests::goldfish_runs_and_casts_sometimes ... ok
+test goldfish::tests::asap_casts_doomsday_reliably has been running for over 60 seconds
+test goldfish::tests::asap_is_at_least_as_fast_as_baseline_by_cutoff has been running for over 60 seconds
+test goldfish::tests::car_enabled_never_lowers_the_send_rate has been running for over 60 seconds
+test goldfish::tests::realized_car_pop_sends_without_any_doomsday has been running for over 60 seconds
+test goldfish::tests::asap_casts_doomsday_reliably ... ok
+test goldfish::tests::realized_car_pop_sends_without_any_doomsday ... ok
+test goldfish::tests::car_enabled_never_lowers_the_send_rate ... ok
+error: test failed, to rerun pass `-p libmtg-doomsday --lib`
+
+Caused by:
+  process didn't exit successfully: `C:\Users\4domi\Downloads\MTGSim_Forge_Build_v4_9\MTGSim\libmtg\target\debug\deps\libmtg_doomsday-606655bc56ca7257.exe` (exit code: 0xffffffff)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.

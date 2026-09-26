@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The London Ponder Paradox — Doomsday writeups</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif;
+      line-height: 1.6; padding: 1.5rem; }
+    .wrap { max-width: 48rem; margin: 0 auto; }
+    a { color: #5dade2; }
+    .nav { font-size: 0.8rem; margin-bottom: 1.5rem; }
+    .nav a { text-decoration: none; }
+    h1 { font-size: 1.5rem; color: #5dade2; margin-bottom: 0.4rem; letter-spacing: 0.02em; }
+    h2 { font-size: 1.1rem; color: #5dade2; margin: 2rem 0 0.6rem; padding-top: 1rem;
+      border-top: 1px solid #0f3460; }
+    p { margin: 0.7rem 0; }
+    code { background: #111a2e; padding: 0 4px; border-radius: 3px; color: #9fd0ee; font-size: 0.9em; }
+    em { color: #c8c8d4; }
+    table { border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; min-width: 18rem; }
+    th, td { padding: 0.35rem 0.9rem; text-align: left; border-bottom: 1px solid #0f3460; }
+    th { color: #888; font-weight: normal; }
+    th.num { text-align: right; }
+    td.num { color: #f5b041; font-weight: bold; text-align: right; font-variant-numeric: tabular-nums; }
+    td.lift { color: #5dade2; font-weight: bold; text-align: right; font-variant-numeric: tabular-nums; }
+    .slope { font-size: 0.9rem; color: #9aa; margin: 0.3rem 0 0.8rem; }
+    .slope b { color: #5dade2; }
+    .takeaway { background: #16213e; border-left: 3px solid #5dade2; border-radius: 0 6px 6px 0;
+      padding: 0.7rem 1rem; margin: 1rem 0; }
+    .takeaway b { color: #f5b041; }
+    .howto { background: #16213e; border: 1px solid #0f3460; border-radius: 8px;
+      padding: 0.6rem 1rem; margin: 1.25rem 0; font-size: 0.9rem; }
+    .howto ul { margin: 0.3rem 0 0.3rem 1.2rem; }
+    .howto li { margin: 0.25rem 0; }
+    details { margin: 1.5rem 0; }
+    summary { cursor: pointer; color: #5dade2; font-size: 0.95rem; }
+    details .body { font-size: 0.85rem; color: #c8c8d4; padding: 0.5rem 0 0 0.5rem; }
+    details .body ul { margin-left: 1.1rem; }
+    details .body li { margin: 0.4rem 0; }
+    footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #0f3460;
+      color: #666; font-size: 0.78rem; }
+    footer a { color: #777; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav"><a href="../../">&larr; Doomsday</a> &nbsp;·&nbsp; <a href="../">Writeups</a> &nbsp;·&nbsp; <a href="../../goldfish/">Goldfish simulator</a></div>
+
+  <h1>The London Ponder Paradox</h1>
+  <p><em>A companion to <a href="../tempo-dd-speedup-6-22-26/">Assessing marginal speed-ups for Tempo
+    Doomsday</a>.</em></p>
+
+  <p>In the previous analysis, we reached a surprising conclusion: exchanging copies of Ponder and
+    Wasteland between copies 2&ndash;4 turned out to have no discernable effect on the observed
+    probability of casting Doomsday by turn 3. This is a huge surprise, as Ponder is the single most
+    impactful cantrip when hunting for a particular card (like Doomsday!) and Wasteland is borderline
+    dead for casting Doomsday (it can cycle to Edge of Autumn or pay for Flow State). So how could a
+    deck with 4 Ponder and 2 Wasteland be equally good at casting T3 Doomsdays as a deck with 2 Ponder
+    and 4 Wasteland?!</p>
+  <p>The answer is the London mulligan, and our simulator's mulligan strategy's respect for Ponder.</p>
+
+  <h2>The raw deck <em>does</em> care</h2>
+  <p>I re-ran the same three builds under a trivial mulligan strategy, <b>Keep7</b>, which keeps every
+    opening seven no matter what:</p>
+  <table>
+    <tr><th>Build</th><th class="num">Keep7 P(DD&le;T3)</th></tr>
+    <tr><td>2 Pon / 4 Wst</td><td class="num">50.2%</td></tr>
+    <tr><td>3 Pon / 3 Wst</td><td class="num">51.6%</td></tr>
+    <tr><td>4 Pon / 2 Wst</td><td class="num">53.1%</td></tr>
+  </table>
+  <p>About <b>+1.5% per Ponder</b>. So selection is genuinely worth something: the extra Ponders dig
+    you to Doomsday faster when you are forced to play whatever you are dealt. The intuition that
+    Ponder should help dig is vindicated, and we confirm that the strategy really is able to take
+    advantage of Ponders to dig for Doomsdays. A Ponder isn't quite as good as a Personal Tutor, but
+    it is very helpful.</p>
+
+  <h2>The mulligan erases the speed-up of Ponder</h2>
+  <p>Now turn the mulligan strategy back on (<b>Realistic</b> = keep only hands with a viable plan):</p>
+  <table>
+    <tr><th>Build</th><th class="num">Keep7</th><th class="num">Realistic</th><th class="num">mulligan lift</th></tr>
+    <tr><td>2 Pon / 4 Wst</td><td class="num">50.2%</td><td class="num">61.5%</td><td class="lift">+11.3</td></tr>
+    <tr><td>3 Pon / 3 Wst</td><td class="num">51.6%</td><td class="num">61.9%</td><td class="lift">+10.3</td></tr>
+    <tr><td>4 Pon / 2 Wst</td><td class="num">53.1%</td><td class="num">60.9%</td><td class="lift">+7.8</td></tr>
+  </table>
+  <p>Two things jump out. The mulligan adds a lot (~+10 points). And the lift it adds <em>shrinks</em>
+    as the deck gets better at finding Doomsday — <b>+11.3 for the slowest deck, +7.8 for the
+    fastest</b>.</p>
+
+  <h2>We mulligan the hands with wastelands!</h2>
+  <p>The mechanism shows up in three numbers.</p>
+
+  <p><b>Air-heavy hands get thrown back.</b> Wasteland is considered "air" in our hand evaluator, and
+    contributes to flood-type mulligans (similar to excess colored mana sources or Doomsday
+    win-cons).</p>
+  <table>
+    <tr><th>Build</th><th class="num">air in kept 7</th><th class="num">air in mulliganed 7</th></tr>
+    <tr><td>2 Pon / 4 Wst</td><td class="num">0.89</td><td class="num">1.38</td></tr>
+    <tr><td>3 Pon / 3 Wst</td><td class="num">0.78</td><td class="num">1.22</td></tr>
+    <tr><td>4 Pon / 2 Wst</td><td class="num">0.72</td><td class="num">1.04</td></tr>
+  </table>
+  <p>So as we increase the count of Wastelands, our mulligans tend to contain more air on average.</p>
+
+  <p><b>The air-heavy deck mulligans more.</b> Because it opens more air, the 2-Ponder build keeps
+    only 65.7% of its sevens while the 4-Ponder build keeps 70.6%. The slower wasteland heavy deck
+    throws back more hands, and each mulligan is another chance to find a plan.</p>
+  <table>
+    <tr><th>Build</th><th class="num">keeps at 7</th><th class="num">at 6</th><th class="num">at 5</th><th class="num">at 4</th></tr>
+    <tr><td>2 Pon / 4 Wst</td><td class="num">65.7%</td><td class="num">23.7%</td><td class="num">7.6%</td><td class="num">3.0%</td></tr>
+    <tr><td>4 Pon / 2 Wst</td><td class="num">70.6%</td><td class="num">21.2%</td><td class="num">6.4%</td><td class="num">1.8%</td></tr>
+  </table>
+
+  <p><b>The hands that survive are equally fast.</b> The P(cast by T3) of a <em>kept</em> hand barely
+    moves across the three decks — about 62% whether the deck runs 2 or 4 Ponder:</p>
+  <table>
+    <tr><th>Build</th><th class="num">P(cast) of a keep</th></tr>
+    <tr><td>2 Pon / 4 Wst</td><td class="num">62.5%</td></tr>
+    <tr><td>3 Pon / 3 Wst</td><td class="num">62.9%</td></tr>
+    <tr><td>4 Pon / 2 Wst</td><td class="num">61.6%</td></tr>
+  </table>
+  <p>The keep bar is a quality floor, and every deck mulligans until it clears it. As a result, the
+    decks differ in how often they have to mulligan, not in how fast the keeps are. We are likely
+    enough to find a functionally equivalent 5 (most hands have a couple cards that don't end up
+    contributing to finding or casting the Doomsday) that this doesn't actually reduce our chance of a
+    Doomsday by T3.</p>
+
+  <h2>Future Work</h2>
+  <p>Since there is no discernable effect on speed from Ponders with Realistic mulligans, the place we
+    would expect them to really shine is in hand <em>quality</em> when we Doomsday. Sure, we can paper
+    over our Ponders with London mulligans, but we are much less likely to still have that Force of
+    Will to back up the Doomsday if we had to mull to 5 to find it.</p>
+  <p>If we can expand the simulator to try to also optimize for and measure the valid interaction it
+    layered in with the Doomsday presented, then we are likely to see the beneficial effects of
+    Ponder. The naive treatment bolted on to the sim currently, which doesn't really optimize for
+    keeping interaction, does not yet show this effect (protection counts are relatively flat across
+    the builds).</p>
+
+  <details>
+    <summary>Method footnotes (optional, for the curious)</summary>
+    <div class="body">
+      <ul>
+        <li>Goldfish = solitaire Monte-Carlo, 10k games per cell.</li>
+        <li>"Air" = cards that contribute to no realistic plan in the keep logic: extra mana, LED,
+          Edge of Autumn, Jace, Thassa, Wasteland, etc.</li>
+        <li>Simulator and code: <a href="../../goldfish/">bur.io/doomsday/goldfish</a>,
+          <a href="https://github.com/boryas/libmtg">github.com/boryas/libmtg</a>.</li>
+      </ul>
+    </div>
+  </details>
+
+  <footer>
+    <a href="../../">Doomsday tools</a> · <a href="../">Writeups</a> ·
+    <a href="https://github.com/boryas/libmtg">github.com/boryas/libmtg</a>
+  </footer>
+</div>
+</body>
+</html>

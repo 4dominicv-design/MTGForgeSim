@@ -1,0 +1,829 @@
+ Downloading crates ...
+  Downloaded adler2 v2.0.1
+  Downloaded displaydoc v0.2.6
+  Downloaded synstructure v0.13.2
+  Downloaded form_urlencoded v1.2.2
+  Downloaded untrusted v0.9.0
+  Downloaded yoke-derive v0.8.2
+  Downloaded subtle v2.6.1
+  Downloaded percent-encoding v2.3.2
+  Downloaded utf8_iter v1.0.4
+  Downloaded zerofrom v0.1.8
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded zerofrom-derive v0.1.7
+  Downloaded webpki-roots v0.26.11
+  Downloaded idna_adapter v1.2.2
+  Downloaded potential_utf v0.1.5
+  Downloaded find-msvc-tools v0.1.9
+  Downloaded simd-adler32 v0.3.9
+  Downloaded writeable v0.6.3
+  Downloaded zerovec-derive v0.11.3
+  Downloaded shlex v2.0.1
+  Downloaded once_cell v1.21.4
+  Downloaded smallvec v1.15.2
+  Downloaded tinystr v0.8.3
+  Downloaded yoke v0.8.3
+  Downloaded crc32fast v1.5.0
+  Downloaded rustls-pki-types v1.14.1
+  Downloaded zeroize v1.9.0
+  Downloaded litemap v0.8.2
+  Downloaded ureq v2.12.1
+  Downloaded log v0.4.32
+  Downloaded icu_provider v2.2.0
+  Downloaded icu_properties v2.2.0
+  Downloaded base64 v0.22.1
+  Downloaded miniz_oxide v0.8.9
+  Downloaded icu_normalizer v2.2.0
+  Downloaded icu_locale_core v2.2.0
+  Downloaded icu_collections v2.2.0
+  Downloaded flate2 v1.1.9
+  Downloaded icu_normalizer_data v2.2.0
+  Downloaded rustls-webpki v0.103.13
+  Downloaded url v2.5.8
+  Downloaded zerotrie v0.2.4
+  Downloaded cc v1.2.65
+  Downloaded zerovec v0.11.6
+  Downloaded webpki-roots v1.0.8
+  Downloaded icu_properties_data v2.2.0
+  Downloaded idna v1.1.0
+  Downloaded rustls v0.23.40
+  Downloaded ring v0.17.14
+   Compiling stable_deref_trait v1.2.1
+   Compiling litemap v0.8.2
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling writeable v0.6.3
+   Compiling syn v2.0.118
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_normalizer_data v2.2.0
+   Compiling utf8_iter v1.0.4
+   Compiling zeroize v1.9.0
+   Compiling smallvec v1.15.2
+   Compiling crc32fast v1.5.0
+   Compiling untrusted v0.9.0
+   Compiling rustls-pki-types v1.14.1
+   Compiling cc v1.2.65
+   Compiling adler2 v2.0.1
+   Compiling rustls v0.23.40
+   Compiling simd-adler32 v0.3.9
+   Compiling percent-encoding v2.3.2
+   Compiling miniz_oxide v0.8.9
+   Compiling webpki-roots v1.0.8
+   Compiling log v0.4.32
+   Compiling subtle v2.6.1
+   Compiling form_urlencoded v1.2.2
+   Compiling once_cell v1.21.4
+   Compiling webpki-roots v0.26.11
+   Compiling base64 v0.22.1
+   Compiling flate2 v1.1.9
+   Compiling ring v0.17.14
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerovec-derive v0.11.3
+   Compiling displaydoc v0.2.6
+   Compiling serde_derive v1.0.228
+   Compiling clap_derive v4.6.1
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling clap v4.6.1
+   Compiling rustls-webpki v0.103.13
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling icu_collections v2.2.0
+   Compiling serde v1.0.228
+   Compiling icu_locale_core v2.2.0
+   Compiling libmtg-engine v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v4_9\MTGSim\libmtg\crates\libmtg-engine)
+   Compiling libmtg-decklist v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v4_9\MTGSim\libmtg\crates\libmtg-decklist)
+   Compiling icu_provider v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling icu_normalizer v2.2.0
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+warning: fields `produces` and `produces_count` are never read
+    --> crates\libmtg-engine\src\lib.rs:1177:5
+     |
+1174 | pub struct ManaAbilityOption {
+     |            ----------------- fields in this struct
+...
+1177 |     produces: Vec<Color>,
+     |     ^^^^^^^^
+1178 |     produces_count: usize,
+     |     ^^^^^^^^^^^^^^
+     |
+     = note: `ManaAbilityOption` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `take_sideboard_card` is never used
+    --> crates\libmtg-engine\src\lib.rs:2183:19
+     |
+2039 | impl SimState {
+     | ------------- method in this implementation
+...
+2183 |     pub(crate) fn take_sideboard_card(&mut self, who: PlayerId, index: usize) -> Option<String> {
+     |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: method `display` is never used
+  --> crates\libmtg-engine\src\catalog.rs:61:19
+   |
+56 | impl ManaCost {
+   | ------------- method in this implementation
+...
+61 |     pub(crate) fn display(&self) -> String {
+   |                   ^^^^^^^
+
+warning: method `as_land` is never used
+    --> crates\libmtg-engine\src\catalog.rs:1271:19
+     |
+ 967 | impl CardDef {
+     | ------------ method in this implementation
+...
+1271 |     pub(crate) fn as_land(&self) -> Option<&LandData> {
+     |                   ^^^^^^^
+
+warning: function `eff_ir` is never used
+  --> crates\libmtg-engine\src\effects.rs:59:15
+   |
+59 | pub(crate) fn eff_ir(who: PlayerId, action: crate::ir::action::Action) -> Effect {
+   |               ^^^^^^
+
+warning: function `eff_draw` is never used
+  --> crates\libmtg-engine\src\effects.rs:67:15
+   |
+67 | pub(crate) fn eff_draw(who: PlayerId, n: usize) -> Effect {
+   |               ^^^^^^^^
+
+warning: function `eff_sacrifice` is never used
+   --> crates\libmtg-engine\src\effects.rs:234:15
+    |
+234 | pub(crate) fn eff_sacrifice(caster: PlayerId, who: Who, filter: Filter) -> Effect {
+    |               ^^^^^^^^^^^^^
+
+warning: function `eff_bounce_target` is never used
+   --> crates\libmtg-engine\src\effects.rs:286:15
+    |
+286 | pub(crate) fn eff_bounce_target(caster: PlayerId) -> Effect {
+    |               ^^^^^^^^^^^^^^^^^
+
+warning: function `eff_reanimate` is never used
+   --> crates\libmtg-engine\src\effects.rs:296:15
+    |
+296 | pub(crate) fn eff_reanimate(actor: PlayerId) -> Effect {
+    |               ^^^^^^^^^^^^^
+
+warning: function `eff_fetch_search` is never used
+   --> crates\libmtg-engine\src\effects.rs:474:15
+    |
+474 | pub(crate) fn eff_fetch_search(
+    |               ^^^^^^^^^^^^^^^^
+
+warning: field `set_to_index` is never read
+   --> crates\libmtg-engine\src\snapshot.rs:130:5
+    |
+129 | pub struct CardRegistry {
+    |            ------------ field in this struct
+130 |     set_to_index: HashMap<String, u16>,
+    |     ^^^^^^^^^^^^
+
+   Compiling ureq v2.12.1
+   Compiling libmtg-forge v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v4_9\MTGSim\libmtg\apps\libmtg-forge)
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2196:41
+     |
+2196 |         let CostBody::Ir(action) = cost else { unreachable!() };
+     |         ------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+     = note: `#[warn(irrefutable_let_patterns)]` on by default
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2215:51
+     |
+2215 |         let CostBody::Ir(action) = &alts[0].costs else {
+     |         ----------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2241:51
+     |
+2241 |         let CostBody::Ir(action) = &alts[0].costs else {
+     |         ----------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2268:51
+     |
+2268 |         let CostBody::Ir(action) = &alts[0].costs else {
+     |         ----------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2298:51
+     |
+2298 |         let CostBody::Ir(action) = &alts[0].costs else {
+     |         ----------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2321:46
+     |
+2321 |         let CostBody::Ir(action) = &ab.costs else {
+     |         ------------------------------------ ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2369:46
+     |
+2369 |         let CostBody::Ir(action) = &ab.costs else { panic!("expected Ir cost") };
+     |         ------------------------------------ ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2419:41
+     |
+2419 |         let CostBody::Ir(action) = cost else { unreachable!() };
+     |         ------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\ir\tests.rs:2445:41
+     |
+2445 |         let CostBody::Ir(action) = cost else {
+     |         ------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: unused variable: `state`
+    --> crates\libmtg-engine\src\tests.rs:2691:19
+     |
+2691 |     fn kaito_zero(state: &mut SimState) -> Effect {
+     |                   ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable `else` clause
+    --> crates\libmtg-engine\src\tests.rs:3297:67
+     |
+3297 |         let crate::ir::ability::CostBody::Ir(action) = &alt.costs else {
+     |         --------------------------------------------------------- ^^^^
+     |         |
+     |         assigning to binding pattern will always succeed
+     |
+     = note: this pattern always matches, so the else clause is unreachable
+
+warning: methods `block_order` and `damage_assignment` are never used
+   --> crates\libmtg-engine\src\strategy.rs:347:19
+    |
+324 | impl TestStrategy {
+    | ----------------- methods in this implementation
+...
+347 |     pub(crate) fn block_order(mut self, order: Vec<ObjId>) -> Self { self.block_order = Some(order); self }
+    |                   ^^^^^^^^^^^
+348 |     /// Override the combat-damage split across ordered blockers.
+349 |     pub(crate) fn damage_assignment(mut self, d: Vec<i32>) -> Self { self.damage_assignment = Some(d); self }
+    |                   ^^^^^^^^^^^^^^^^^
+
+warning: `libmtg-engine` (lib) generated 11 warnings
+warning: `libmtg-engine` (lib test) generated 16 warnings (4 duplicates) (run `cargo fix --lib -p libmtg-engine --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 48.22s
+     Running unittests src\lib.rs (target\debug\deps\libmtg_engine-889c74e28d1e62c6.exe)
+
+running 477 tests
+test ir::tests::action_construction_smoke ... ok
+test ir::tests::ce_mod_smoke ... ok
+test ir::tests::ability_construction_smoke ... ok
+test ir::tests::axis_smoke ... ok
+test ir::tests::bind_env_smoke ... ok
+test ir::tests::cost_phase1::build_schema_pay_life_x_emits_number_decision ... ok
+test ir::tests::cost_phase1::equiv_pay_life_2 ... ok
+test ir::tests::cost_phase1::build_schema_tap_source_no_decision ... ok
+test ir::tests::cost_phase1::build_schema_pay_life_constant_no_decision ... ok
+test ir::tests::cost_phase1::equiv_tap_self ... ok
+test ir::tests::cost_phase1::loyalty_adjust_positive_increases ... ok
+test ir::tests::cost_phase1::loyalty_adjust_modifies_source_and_marks_activated ... ok
+test ir::tests::cost_phase1::pay_mana_returns_shortage_when_pool_empty ... ok
+test ir::tests::cost_phase1::pay_mana_drains_pool_when_payable ... ok
+test ir::tests::cost_phase1::pay_mana_partial_pool_reports_residual ... ok
+test ir::tests::cost_phase1::pay_validates_missing_binding ... ok
+test ir::tests::cost_phase3::default_announcement_branch_picks_first_payable ... ok
+test ir::tests::cost_phase1::sequence_short_circuits_on_mana_shortage ... ok
+test ir::tests::cost_phase3::default_announcement_replicate_picks_zero ... ok
+test ir::tests::cost_phase3::default_announcement_picks_first_n_objects ... ok
+test ir::tests::cost_phase1::replicate_outside_cost_context_is_noop ... ok
+test ir::tests::cost_phase3::default_announcement_xlife_picks_min_three_and_max ... ok
+test ir::tests::cost_phase3::default_announcement_single_object_uses_obj_value ... ok
+test ir::tests::cost_phase3::pay_ir_cost_drains_life_with_default_strategy ... ok
+test catalog::added_mana_tests::surveil_duals_enter_tapped_abu_duals_dont ... ok
+test ir::tests::cost_phase3::pay_ir_cost_unpayable_returns_none ... ok
+test ir::tests::cost_phase3::pay_ir_cost_xlife_uses_default_strategy_binding ... ok
+test catalog::added_mana_tests::dark_ritual_adds_bbb ... ok
+test catalog::added_mana_tests::non_ritual_spells_and_lands_add_no_resolve_mana ... ok
+test ir::tests::cost_phase4::move_by_choice_walk_unpayable_with_no_candidates ... ok
+test ir::tests::cost_phase4::force_of_will_alt_cost_storage_is_ir_pitch_then_pay_life ... ok
+test ir::tests::cost_phase4::daze_alt_cost_storage_is_ir_move_by_choice_return ... ok
+test ir::tests::cost_phase4::engineered_explosives_pay_ir_cost_drains_mana_and_sacrifices ... ok
+test ir::tests::cost_phase4::ir_tap_mana_storage_is_ir ... ok
+test ir::tests::cost_phase4::engineered_explosives_storage_is_ir_pay_mana_then_sacrifice ... ok
+test ir::tests::cost_xmana::nested_choose_branch_carries_discard_object_decision ... ok
+test ir::tests::cost_phase4::force_of_negation_alt_cost_storage_is_ir_pitch ... ok
+test ir::tests::cost_xmana::pay_mana_x_constant_emits_no_decision ... ok
+test ir::tests::cost_xmana::nested_choose_falls_back_to_life_when_hand_empty ... ok
+test ir::tests::cost_xmana::pay_mana_x_var_emits_xmana_decision_bounded_by_potential ... ok
+test ir::tests::cost_xmana::nested_choose_discard_branch_executes_chosen_card ... ok
+test ir::tests::cost_xmana::pay_mana_x_drains_pool_by_bound_amount ... ok
+test ir::tests::deps::abilities_writers ... ok
+test ir::tests::deps::cast_permission_writers ... ok
+test ir::tests::deps::all_objects_reads_zone_and_filter_axes ... ok
+test ir::tests::cost_phase4::lotus_petal_storage_is_ir_sacrifice ... ok
+test ir::tests::deps::ce_edge_copy_then_read_type ... ok
+test ir::tests::deps::ce_edge_no_overlap_is_independent ... ok
+test ir::tests::deps::ce_edge_pump_then_read_power ... ok
+test ir::tests::deps::color_writers ... ok
+test ir::tests::deps::colors_reads_color ... ok
+test ir::tests::deps::composed_predicate_unions_axes ... ok
+test ir::tests::deps::controller_reads_control_but_owner_is_free ... ok
+test ir::tests::deps::copy_writer_covers_all_characteristic_layers ... ok
+test ir::tests::deps::cost_mod_writers ... ok
+test ir::tests::deps::dedup_removes_repeated_axes ... ok
+test ir::tests::deps::game_ctx_and_triggering_event ... ok
+test ir::tests::deps::keywords_reads_abilities ... ok
+test ir::tests::deps::power_reads_pt ... ok
+test ir::tests::deps::mv_and_name_read_copy_layer ... ok
+test ir::tests::deps::pt_writers ... ok
+test ir::tests::deps::rule_mod_writers ... ok
+test ir::tests::deps::type_writers ... ok
+test ir::tests::deps::types_reads_type ... ok
+test ir::tests::deps::supertypes_and_subtypes_both_read_type_layer ... ok
+test ir::tests::event_log_smoke ... ok
+test ir::tests::deps::zone_and_counters_and_life ... ok
+test ir::tests::cost_phase4::snuff_out_alt_cost_storage_is_ir_pay_life_4 ... ok
+test ir::tests::cost_phase4::wasteland_storage_is_ir_sequence ... ok
+test ir::tests::execute_parity::bounce_parity ... ok
+test ir::tests::execute_parity::choose_picks_strategy_index ... ok
+test ir::tests::execute_parity::attach_sets_attached_to_and_detaches_on_ltb ... ok
+test ir::tests::execute_parity::counter_parity ... ok
+test ir::tests::execute_parity::damage_permanent_parity ... ok
+test ir::tests::execute_parity::damage_player_parity ... ok
+test ir::tests::execute_parity::dig_keeps_chosen_and_bottoms_the_rest ... ok
+test ir::tests::execute_parity::destroy_parity ... ok
+test ir::tests::execute_parity::discard_sends_random_hand_card_to_graveyard ... ok
+test ir::tests::execute_parity::draw_parity ... ok
+test ir::tests::execute_parity::exile_parity ... ok
+test ir::tests::execute_parity::for_each_damages_all_creatures ... ok
+test ir::tests::execute_parity::if_then_branches_correctly ... ok
+test ir::tests::execute_parity::may_do_respects_strategy_no ... ok
+test ir::tests::execute_parity::may_do_respects_strategy_yes ... ok
+test ir::tests::execute_parity::pay_life_parity ... ok
+test ir::tests::execute_parity::move_changes_zone ... ok
+test ir::tests::execute_parity::put_counters_parity ... ok
+test ir::tests::execute_parity::mill_parity_against_manual_baseline ... ok
+test ir::tests::execute_parity::reveal_marks_hand_known ... ok
+test ir::tests::execute_parity::remove_counters_saturates_at_zero ... ok
+test ir::tests::execute_parity::sacrifice_parity ... ok
+test ir::tests::execute_parity::scry_parity ... ok
+test ir::tests::execute_parity::sequence_runs_in_order ... ok
+test ir::tests::execute_parity::tap_and_untap_flip_battlefield_state ... ok
+test ir::tests::execute_parity::search_picks_matching_card ... ok
+test ir::tests::execute_parity::search_to_top_after_shuffle_puts_chosen_sorcery_on_top ... ok
+test ir::tests::execute_parity::surveil_parity ... ok
+test ir::tests::expr_construction_smoke ... ok
+test ir::tests::game_ctx_smoke ... ok
+test ir::tests::parity::scoped_binder_enumeration ... ok
+test ir::tests::playable_phase2::empty_board_yields_no_playable ... ok
+test ir::tests::playable_phase2::affordable_spell_appears_with_schema ... ok
+test ir::tests::scoped_binder_smoke ... ok
+test ir::tests::playable_phase2::unaffordable_spell_in_hand_not_playable ... ok
+test snapshot::tests::base64url_roundtrip_various_lengths ... ok
+test snapshot::tests::decode_bad_version ... ok
+test snapshot::tests::decode_truncated ... ok
+test snapshot::tests::compare_v2_v3_sizes ... ok
+test snapshot::tests::pile_slot_survives_roundtrip ... ok
+test snapshot::tests::from_url_token_decodes_both_v2_and_v3 ... ok
+test ir::tests::execute_parity::flow_state_keeps_two_only_with_instant_and_sorcery_in_graveyard ... ok
+test snapshot::tests::roundtrip_binary ... ok
+test snapshot::tests::roundtrip_base64url ... ok
+test snapshot::tests::snapshot_size ... ok
+test snapshot::tests::registry_roundtrip ... ok
+test snapshot::tests::v3_roundtrip ... ok
+test tests::resolving_spell_stays_on_stack_until_its_effect_finishes ... ok
+test tests::test_activated_ability_not_a_trigger_target ... ok
+test tests::test_abrade_creature_mode_nonlethal_survives ... ok
+test tests::test_adventure_resolve_exiles_to_on_adventure ... ok
+test tests::test_abrade_creature_mode_deals_lethal_damage ... ok
+test tests::test_additional_cost_paid_on_cast ... ok
+test tests::test_abrade_artifact_mode_destroys ... ok
+test tests::test_adventure_bounce_effect_returns_opp_permanent ... ok
+test tests::test_additional_cost_blocks_cast_when_unpayable ... ok
+test tests::counter_targets_own_spell_only_with_who_any ... ok
+test tests::test_apply_bowmasters_etb_deals_damage_and_creates_army ... ok
+test tests::test_basalt_monolith_does_not_untap_normally_and_can_pay_three_to_untap ... ok
+test tests::test_ancient_tomb_produces_two_and_deals_damage ... ok
+test tests::test_apply_bowmasters_etb_grows_existing_army ... ok
+test tests::test_batterskull_bounce_self_to_hand ... ok
+test tests::test_auto_tap_plan_satisfies_specific_colorless_pips ... ok
+test tests::test_batterskull_living_weapon_attaches_and_buffs_germ ... ok
+test tests::test_assign_combat_damage_strategy_choice ... ok
+test tests::test_beb_counters_red_and_hydroblast_fizzles_on_non_red ... ok
+test tests::test_beginning_phase_untaps_and_draws ... ok
+test tests::test_bitter_triumph_discard_branch_preferred ... ok
+test tests::test_bowmasters_no_trigger_on_natural_first_draw ... ok
+test tests::test_bitter_triumph_life_branch_fallback ... ok
+test tests::test_bitter_triumph_unpayable_when_both_branches_blocked ... ok
+test tests::test_bowmasters_triggers_on_cantrip_draw ... ok
+test tests::test_blood_moon_nonbasic_becomes_mountain ... ok
+test tests::test_brainstorm_composition_draw3_putback2 ... ok
+test tests::test_bowmasters_ping_kills_1_1_creature ... ok
+test tests::test_bowmasters_ping_hits_face_when_no_killable_creature ... ok
+test tests::test_bowmasters_ping_prioritises_opposing_bowmasters ... ok
+test tests::test_cast_delve_spell_insufficient_mana_after_delve ... ok
+test tests::test_cast_delve_spell_exiles_graveyard_cards ... ok
+test tests::test_brainstorm_flips_tamiyo_on_second_draw_of_three ... ok
+test tests::test_brotherhoods_end_mode0_damages_creatures ... ok
+test tests::test_brainstorm_net_one_card ... ok
+test tests::test_cast_delve_spell_partial_delve ... ok
+test tests::test_brainstorm_fires_three_draw_events ... ok
+test tests::test_brotherhoods_end_mode1_destroys_cheap_artifacts ... ok
+test tests::test_cast_spell_alt_cost_exiles_pitch_card ... ok
+test tests::test_cda_power_equals_graveyard_count ... ok
+test tests::test_cavern_colored_mana_allowed_for_creature ... ok
+test tests::test_cast_spell_normal_cost_removes_from_library ... ok
+test tests::test_cavern_colored_mana_blocked_for_non_creature ... ok
+test tests::test_cast_spell_unaffordable_returns_none ... ok
+test tests::test_cleanup_removes_damage ... ok
+test tests::test_city_of_traitors_not_triggered_by_fetch ... ok
+test tests::test_city_of_traitors_produces_two_colorless ... ok
+test tests::test_city_of_traitors_sacrificed_when_another_land_played ... ok
+test tests::test_combat_phase_full_cycle ... ok
+test tests::test_combat_damage_blocked_no_player_damage ... ok
+test tests::test_combat_damage_unblocked_hits_player ... ok
+test tests::test_cast_from_adventure_enters_play ... ok
+test tests::test_combat_damage_sba_kills_both_2_2s ... ok
+test tests::test_combat_damage_outclassed_attacker_dies ... ok
+test tests::test_clue_token_activated_draws_via_ir ... ok
+test tests::test_consider_surveil_then_draw ... ok
+test tests::test_consider_surveil_keeps_good_card ... ok
+test tests::test_consign_counters_colorless_spell ... ok
+test tests::test_consign_counters_triggered_ability ... ok
+test tests::test_containment_priest_does_not_exile_itself ... ok
+test tests::test_cori_equip_grants_keywords_and_pt ... ok
+test tests::test_containment_priest_exiles_non_cast_creature ... ok
+test tests::test_cori_flurry_not_first_spell ... ok
+test tests::test_counter_fizzles_on_uncounterable_spell ... ok
+test tests::test_cori_flurry_second_spell ... ok
+test tests::test_cori_no_buff_when_unattached ... ok
+test tests::test_cycling_draw_effect ... ok
+test tests::test_counter_unless_pays_counters_when_opp_cannot_pay ... ok
+test tests::test_deathrite_first_ability_is_not_a_mana_ability ... ok
+test tests::test_counter_unless_pays_spell_resolves_when_opp_pays ... ok
+test tests::test_cori_flurry_not_third_spell ... ok
+test tests::test_counter_spell_filter_excludes_abilities ... ok
+test tests::test_daze_counter_unless_pays_1 ... ok
+test tests::test_cryptic_coat_etb_cloaks_token_and_attaches ... ok
+test tests::test_declare_attackers_sets_attacking_flag ... ok
+test tests::test_deathtouch_blocker_kills_attacker ... ok
+test tests::test_daze_bounce_alt_cost_records_returned_island ... ok
+test tests::test_deathtouch_attacker_kills_big_blocker ... ok
+test tests::test_declare_blockers_sets_unblocked_flag_when_no_blocker ... ok
+test tests::test_daze_pays_by_tapping_land ... ok
+test tests::test_delver_no_transform_without_instant_on_top ... ok
+test tests::test_declare_blockers_blocked_attacker_not_unblocked ... ok
+test tests::test_disruptor_flute_names_brainstorm_taxes_it ... ok
+test tests::test_double_strike_unblocked_deals_damage_twice ... ok
+test tests::test_disruptor_flute_does_not_affect_other_cards ... ok
+test tests::test_double_strike_trample_dead_blocker_spills_in_regular ... ok
+test tests::test_disruptor_flute_suppresses_wasteland_ability ... ok
+test tests::test_double_strike_no_trample_dead_blocker_no_spill ... ok
+test tests::test_detach_on_creature_leaves ... ok
+test tests::test_delver_transforms_on_upkeep_with_instant_on_top ... ok
+test tests::test_draw_step_draws_card ... ok
+test tests::test_draw_step_skipped_on_play_turn1 ... ok
+test tests::test_drc_delirium_grants_flying_and_pt ... ok
+test tests::test_dv_replacement_does_not_fire_for_own_cards ... ok
+test tests::test_drc_no_delirium_without_enough_types ... ok
+test tests::test_dv_replacement_exiles_opponent_card ... ok
+test tests::test_dv_activated_grants_castable_from_exile_via_ir ... ok
+test tests::test_effect_cantrip_increments_hand ... ok
+test tests::test_ee_ability_destroys_matching_mv ... ok
+test tests::test_effect_destroy_ability_ignores_basic_land ... ok
+test tests::test_drc_no_surveil_on_creature_cast ... ok
+test tests::test_ee_etb_places_charge_counters ... ok
+test tests::test_effect_destroy_ability_removes_nonbasic_land ... ok
+test tests::test_drc_surveil_on_noncreature_cast ... ok
+test tests::test_effect_mana_adds_to_pool ... ok
+test tests::test_effect_life_loss_reduces_caster_life ... ok
+test tests::test_effect_destroy_spell_removes_opp_creature ... ok
+test tests::test_effect_destroy_spell_removes_opp_land ... ok
+test tests::test_entered_phase_fires_for_main_phases ... ok
+test tests::test_entered_step_fires_for_all_priority_steps ... ok
+test tests::test_end_combat_clears_fields ... ok
+test tests::test_effect_discard_removes_opp_card ... ok
+test tests::test_entered_step_not_fired_for_no_prio_steps ... ok
+test tests::test_end_combat_clears_attacking_unblocked_flags ... ok
+test tests::test_effect_exile_ability_removes_creature ... ok
+test tests::test_fire_triggers_empty_when_no_bowmasters_in_play ... ok
+test tests::test_fantasticar_as_the_fourth_spell_does_not_pop ... ok
+test tests::test_fatal_push_cannot_target_flipped_tamiyo ... ok
+test tests::test_fetchland_search_via_ability_factory ... ok
+test tests::test_fantasticar_creature_spell_does_not_count_toward_four ... ok
+test tests::test_fire_triggers_returns_context_for_bowmasters_etb ... ok
+test tests::test_fantasticar_no_pop_with_four_spells_before_car_then_more_after ... ok
+test tests::test_fantasticar_pops_on_exactly_fourth_noncreature_spell ... ok
+test tests::test_first_strike_step_skipped_when_no_first_or_double_strike ... ok
+test tests::test_first_strike_attacker_kills_blocker_before_regular ... ok
+test tests::test_flusterstorm_no_storm_when_first_spell ... ok
+test tests::test_flusterstorm_storm_copies_counter_spells ... ok
+test tests::test_flusterstorm_storm_trigger_creates_copies ... ok
+test tests::test_fon_countered_target_not_exiled ... ok
+test tests::test_flying_blocked_by_flyer ... ok
+test tests::test_engineered_explosives_destroys_nonland_at_charge_mv ... ok
+test tests::test_fon_pitch_condition_checks_active_player ... ok
+test tests::test_flying_not_blocked_by_ground ... ok
+test tests::test_fow_cannot_pitch_itself ... ok
+test tests::test_fon_counter_and_exile ... ok
+test tests::test_fow_normal_mana_cost ... ok
+test tests::test_fow_not_legal_with_empty_stack ... ok
+test tests::test_fow_not_offered_on_empty_stack ... ok
+test tests::test_fow_not_legal_after_permanent_resolves ... ok
+test tests::test_fow_x_fon_y_stack_interaction ... ok
+test tests::test_fow_legal_with_opposing_spell_on_stack ... ok
+test tests::test_fow_pitch_objects_moved_contains_pitch_card ... ok
+test tests::test_grafdiggers_cage_blocks_gy_and_lib_casting ... ok
+test tests::test_fury_etb_deals_4_to_target ... ok
+test tests::test_fury_hardcast_not_sacrificed ... ok
+test tests::test_fury_evoke_sacrifices_itself ... ok
+test tests::test_grafdiggers_cage_prohibition_blocks_creature_from_gy ... ok
+test tests::test_grafdiggers_cage_does_not_block_non_creature ... ok
+test tests::test_gsz_finds_green_creature ... ok
+test tests::test_grafdiggers_cage_prohibition_removed_on_ltb ... ok
+test tests::test_grafdiggers_cage_restriction_removed_on_ltb ... ok
+test tests::test_grant_ability_makes_mana_and_activated_abilities_usable ... ok
+test tests::test_hexing_squelcher_does_not_protect_opponent_spells ... ok
+test tests::test_hexing_squelcher_grants_ward_to_other_creature ... ok
+test tests::test_hexing_squelcher_protects_your_spells ... ok
+test tests::test_hexing_squelcher_ward_grant_ignores_own_spells ... ok
+test tests::test_ir_ward_ignores_own_spell ... ok
+test tests::test_insufficient_mana_blocks_cast ... ok
+test tests::test_ir_grant_ability_grants_ward_to_other_creature ... ok
+test tests::test_hymn_does_not_reveal_hand ... ok
+test tests::test_hexing_squelcher_ward_grant_applies_to_creature_that_enters_later ... ok
+test tests::test_ir_ward_triggers_and_taxes_opponent ... ok
+test tests::test_karakas_bounces_opp_legendary_creature ... ok
+test tests::test_kaito_animates_only_on_your_turn_with_loyalty ... ok
+test tests::test_island_mana_ability_produces_blue_via_ir ... ok
+test tests::test_kaito_minus_two_taps_and_stuns_target ... ok
+test tests::test_kaito_plus_one_emblem_pumps_only_your_ninjas ... ok
+test tests::test_kaito_zero_no_draw_when_opponent_kept_life ... ok
+test tests::test_kaito_zero_draws_when_opponent_lost_life ... ok
+test tests::test_kozileks_command_max_x_accounts_for_base_cc ... ok
+test tests::test_kozileks_command_x1_spends_three_total_mana ... ok
+test tests::test_kozileks_command_rejects_unpayable_x_without_partial_cast ... ok
+test tests::test_karn_does_not_affect_non_artifacts ... ok
+test tests::test_land_drop_not_offered_during_upkeep_or_opponents_turn ... ok
+test tests::test_karn_minus_two_can_retrieve_artifact_exiled_during_game ... ok
+test tests::test_led_excluded_from_mana_sub_loop ... ok
+test tests::test_karn_suppresses_opponent_artifact_abilities ... ok
+test tests::test_lavinia_trigger_lotus_petal ... ok
+test tests::test_led_excluded_from_potential_mana ... ok
+test tests::test_lavinia_prohibition_blocks_noncreature_over_land_count ... ok
+test tests::test_leyline_removed_no_redirect ... ok
+test tests::test_lifelink_unblocked_gains_life ... ok
+test tests::test_leyline_redirects_gy_to_exile ... ok
+test tests::test_lifelink_blocked_gains_life_from_blocker ... ok
+test tests::test_long_goodbye_still_uncounterable ... ok
+test tests::test_lifelink_on_blocker_gains_life ... ok
+test tests::test_linked_exile_returns_when_portable_hole_leaves ... ok
+test tests::test_magus_ci_removed_on_ltb ... ok
+test tests::test_magus_basic_land_unaffected ... ok
+test tests::test_lavinia_trigger_counters_free_spell ... ok
+test tests::test_magus_fetch_land_loses_ability ... ok
+test tests::test_mana_value ... ok
+test tests::test_magus_does_not_affect_creatures ... ok
+test tests::test_magus_preserves_supertypes ... ok
+test tests::test_mana_log_and_cast_both_present ... ok
+test tests::test_magus_snow_basic_unaffected ... ok
+test tests::test_may_shuffle_gated_by_strategy ... ok
+test tests::test_manifold_key_cannot_repeat_activation_while_tapped ... ok
+test tests::test_magus_multiple_nonbasics ... ok
+test tests::test_magus_nonbasic_becomes_mountain ... ok
+test tests::test_mindbreak_trap_condition_checks_opponent_spell_count ... ok
+test tests::test_manifold_key_failed_payment_does_not_stack_and_passes_priority ... ok
+test tests::test_mindbreak_trap_exiles_all_targeted_spells ... ok
+test tests::test_meteor_sword_etb_destroys_target_and_buffs_equipped ... ok
+test tests::test_meltdown_destroys_artifacts_at_or_below_x ... ok
+test tests::test_mistrise_village_ability_makes_next_spell_uncounterable ... ok
+test tests::test_mistrise_village_etb_tapped_without_mountain_or_forest ... ok
+test tests::test_mishras_bauble_delayed_draw_at_next_upkeep ... ok
+test tests::test_mistrise_village_ability_expires_eot ... ok
+test tests::test_mistrise_village_etb_untapped_with_mountain ... ok
+test tests::test_mistrise_village_ability_one_shot ... ok
+test tests::test_mistrise_village_etb_untapped_with_forest ... ok
+test tests::test_murktide_attacks_with_counter_boosted_stats ... ok
+test tests::test_monk_prowess_noncreature ... ok
+test tests::test_ninjutsu_enters_tapped_and_attacking_inheriting_target ... ok
+test tests::test_mox_opal_metalcraft_not_met ... ok
+test tests::test_murktide_counter_on_instant_exile ... ok
+test tests::test_mox_opal_metalcraft_met ... ok
+test tests::test_murktide_no_counter_on_land_exile ... ok
+test tests::test_murktide_zero_counters_when_no_instants_exiled ... ok
+test tests::test_no_trample_no_spillover ... ok
+test tests::test_no_ability_offered_after_sacrifice_cost_paid ... ok
+test tests::test_no_vigilance_attacker_taps ... ok
+test tests::test_no_stale_objects_after_multi_permanent_resolution ... ok
+test tests::test_murktide_counters_from_exiled_instants_sorceries ... ok
+test tests::test_omniscience_does_not_affect_lands ... ok
+test tests::test_order_sorts_top_n_by_score ... ok
+test tests::test_omniscience_does_not_affect_opponent ... ok
+test tests::test_order_does_not_touch_cards_beyond_n ... ok
+test tests::test_order_blockers_reorders_combat_blocks ... ok
+test tests::test_omniscience_grants_free_alternate_cost_to_hand_spells ... ok
+test tests::test_parse_log_hand_info ... ok
+test tests::test_null_rod_suppresses_artifact_abilities ... ok
+test tests::test_parse_mana_cost_black ... ok
+test tests::test_parse_mana_cost_mixed ... ok
+test tests::test_order_top_respects_strategy_arrangement ... ok
+test tests::test_paid_mana_filter_does_not_self_fund ... ok
+test tests::test_parse_mana_cost_zero ... ok
+test tests::test_painters_servant_names_blue_enables_force_of_will_pitch ... ok
+test tests::test_personal_tutor_finds_sorcery ... ok
+test tests::test_planeswalker_enters_with_starting_loyalty_via_ir_replacement ... ok
+test tests::test_painters_servant_names_blue_makes_pyro_work ... ok
+test tests::test_painters_servant_ci_removed_on_ltb ... ok
+test tests::test_phelia_blinks_own_permanent_gains_counter ... ok
+test tests::test_plain_attacker_skips_first_strike_step ... ok
+test tests::test_preordain_scries_then_draws ... ok
+test tests::test_priority_round_both_pass_empty_stack ... ok
+test tests::test_phelia_blinks_opponent_permanent_no_counter ... ok
+test tests::test_ponder_keeps_best_on_top_and_draws_it ... ok
+test tests::test_ponder_shuffles_when_strategy_opts_in ... ok
+test tests::test_pre_war_formalwear_etb_reanimates_and_attaches ... ok
+test tests::test_protection_colored_spell_cannot_target ... ok
+test tests::test_priority_round_both_players_pass ... ok
+test tests::test_protection_colorless_spell_can_target ... ok
+test tests::test_protection_colored_permanent_ability_can_target ... ok
+test tests::test_prismatic_ending_exiles_iff_mv_le_converge ... ok
+test tests::test_put_back_eval_twice_puts_two_worst ... ok
+test tests::test_put_back_eval_puts_worst_on_top ... ok
+test tests::test_protection_colorless_spell_damage_goes_through ... ok
+test tests::test_protection_prevents_spell_damage ... ok
+test tests::test_protection_does_not_prevent_combat_damage ... ok
+test tests::test_quantum_riddler_etb_draws_and_warp_alt_cost_present ... ok
+test tests::test_put_back_resets_hand_knowledge ... ok
+test tests::test_quantum_riddler_hardcast_not_exiled ... ok
+test tests::test_price_of_progress_deals_damage_per_nonbasic ... ok
+test tests::test_pyroblast_fizzles_on_non_blue_spell ... ok
+test tests::test_recompute_includes_graveyard_objects ... ok
+test tests::test_pyroblast_counters_blue_spell ... ok
+test tests::test_reach_blocks_flyer ... ok
+test tests::test_quantum_riddler_warp_registers_end_step_exile ... ok
+test tests::test_recompute_counters_fold_before_ce ... ok
+test tests::test_reb_counters_blue_spell ... ok
+test tests::test_recompute_pt_modifier ... ok
+test tests::test_relic_of_sauron_has_all_six_two_mana_color_combinations ... ok
+test tests::test_recruiter_etb_finds_low_toughness_creature ... ok
+test tests::test_saga_lore_counters_fire_chapters_then_sacrifice ... ok
+test tests::test_reb_destroys_blue_permanent ... ok
+test tests::test_resolved_permanent_does_not_leave_stale_stack_object ... ok
+test tests::test_sba_life_negative_ends_game ... ok
+test tests::test_sba_life_zero_ends_game ... ok
+test tests::test_sba_lethal_damage_creature_dies ... ok
+test tests::test_reveal_hand_marks_cards_known ... ok
+test tests::test_sba_token_leaves_battlefield_ceases_to_exist ... ok
+test tests::test_sba_token_on_battlefield_not_removed ... ok
+test tests::test_resolve_instant_does_not_log_countered ... ok
+test tests::test_sba_legend_rule_only_one_copy_untouched ... ok
+test tests::test_rough_deals_2_to_non_flyers_spares_flyers ... ok
+test tests::test_sba_legend_rule_second_copy_dies ... ok
+test tests::test_sba_planeswalker_loyalty_zero_dies ... ok
+test tests::test_sba_zero_toughness_creature_dies ... ok
+test tests::test_sheoldrds_edict_mode0_sacrifices_nontoken_creature ... ok
+test tests::test_scry_keeps_good_cards_on_top ... ok
+test tests::test_scry_all_bad_sends_all_to_bottom ... ok
+test tests::test_sheoldrds_edict_token_filter_spares_nontoken ... ok
+test tests::test_shuffle_action_preserves_library ... ok
+test tests::test_show_and_tell_no_candidates_no_crash ... ok
+test tests::test_sneak_attack_enchantment_has_ability ... ok
+test tests::test_snuff_out_cant_pay_life_when_low ... ok
+test tests::test_show_and_tell_caster_puts_creature_on_battlefield ... ok
+test tests::test_stage_label ... ok
+test tests::test_sneak_attack_puts_creature_with_haste ... ok
+test tests::test_sneak_attack_delayed_trigger_sacrifices_at_end_step ... ok
+test tests::test_static_ability_def_grants_flying_at_etb ... ok
+test tests::test_ssg_potential_mana_includes_hand ... ok
+test tests::test_static_ability_def_removed_at_ltb ... ok
+test tests::test_snuff_out_life_alternate_cost ... ok
+test tests::test_ssg_produce_mana_exiles_from_hand ... ok
+test tests::test_stifle_targets_activated_or_triggered ... ok
+test tests::test_stat_mod_reversed_at_cleanup ... ok
+test tests::test_sorcery_speed_spell_not_offered_on_nonempty_stack ... ok
+test tests::test_ssg_on_battlefield_does_not_tap_for_mana ... ok
+test tests::test_stifle_counters_triggered_ability ... ok
+test tests::test_summon_bahamut_has_four_saga_chapters_and_targets_on_first_two ... ok
+test tests::test_stoneforge_activated_puts_equipment_from_hand ... ok
+test tests::test_surgical_extraction_exiles_all_copies ... ok
+test tests::test_stoneforge_etb_finds_equipment ... ok
+test tests::test_tamiyo_clue_when_attacking ... ok
+test tests::test_sufficient_mana_allows_cast ... ok
+test tests::test_surveil_land_etb_keeps_when_choice_false ... ok
+test tests::test_tamiyo_flip_on_third_draw ... ok
+test tests::test_tamiyo_minus_three_returns_card_and_ramps_on_green ... ok
+test tests::test_tamiyo_no_clue_when_not_attacking ... ok
+test tests::test_swords_exiles_creature_and_gains_life ... ok
+test tests::test_summon_bahamut_mega_flare_hits_each_opponent_for_other_permanents_mv ... ok
+test tests::test_toxic_deluge_pays_x_life ... ok
+test tests::test_tamiyo_plus_two_expires_at_controller_untap ... ok
+test tests::test_toxic_deluge_applies_minus_x_pt ... ok
+test tests::test_surveil_land_etb_mills_when_choice_true ... ok
+test tests::test_trample_excess_to_player ... ok
+test tests::test_triggered_ability_on_stack_legal_targets ... ok
+test tests::test_tamiyo_plus_two_applies_power_mod_to_attackers ... ok
+test tests::test_thoughtseize_reveals_then_discards ... ok
+test tests::test_trample_with_deathtouch_assigns_one_to_blocker ... ok
+test tests::test_trample_no_excess_no_player_damage ... ok
+test tests::test_tamiyo_minus_seven_draws_half_library_and_grants_no_max_hand ... ok
+test tests::test_unholy_heat_2_damage_without_delirium ... ok
+test tests::test_untap_step_resets_permanents ... ok
+test tests::test_tumble_deals_6_to_flyers_spares_non_flyers ... ok
+test tests::test_unholy_heat_6_damage_with_delirium ... ok
+test tests::test_urborg_adds_swamp_to_basic ... ok
+test tests::test_urza_saga_ignores_colored_artifact ... ok
+test tests::test_validate_assignment_legal_passthrough ... ok
+test tests::test_urza_saga_ignores_high_mv_artifact ... ok
+test tests::test_urza_saga_chapter_iii_fetches_then_sacrifices ... ok
+test tests::test_validate_assignment_no_trample_no_leftover_falls_back ... ok
+test tests::test_validate_assignment_oversum_falls_back ... ok
+test tests::test_validate_assignment_skips_lethal_falls_back ... ok
+test tests::test_validate_assignment_trample_allows_leftover ... ok
+test tests::test_urborg_adds_swamp_to_nonbasic ... ok
+test tests::test_urborg_ci_removed_on_ltb ... ok
+test tests::test_urborg_no_duplicate_on_swamp ... ok
+test tests::test_urborg_suppressed_under_blood_moon ... ok
+test tests::test_urza_saga_finds_low_cost_colorless_artifact ... ok
+test tests::test_vigilance_attacker_not_tapped ... ok
+test tests::test_xmana_additional_cost_drains_x_generic_on_cast ... ok
+test tests::test_xmana_additional_cost_blocks_cast_when_short ... ok
+test tests::test_wasteland_activated_destroys_target_nonbasic_via_ir ... ok
+test tests::test_yavimaya_adds_forest_to_nonbasic ... ok
+test tests::test_zone_tracking_consistency ... ok
+test tests::test_yavimaya_before_blood_moon_same_result ... ok
+test tests::test_yavimaya_plus_blood_moon ... ok
+
+test result: ok. 477 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running unittests src\lib.rs (target\debug\deps\libmtg_forge-af3858f157dba140.exe)
+
+running 6 tests
+test jev::tests::announcement_id_round_trips ... ok
+test jev::tests::jev_choice_keys_are_short_and_map_back_to_action_ids ... ok
+test jev::tests::jev_compact_state_does_not_duplicate_legal_actions ... ok
+test profile::tests::same_seed_is_reproducible ... ok
+test agent::tests::observation_does_not_leak_hidden_opponent_hand_names ... ok
+test agent::tests::invalid_agent_action_is_rejected_and_falls_back ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running unittests src\main.rs (target\debug\deps\forge_lab-242b3651c2fefb28.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests libmtg_engine
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests libmtg_forge
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

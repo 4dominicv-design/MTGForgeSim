@@ -1,0 +1,29 @@
+4 Planar Nexus
+4 Lotus Petal
+4 Grim Monolith
+4 Kozilek's Command
+4 Manifold Key
+4 Urza's Tower
+3 Mystic Forge
+4 The One Ring
+4 Ancient Tomb
+1 Mox Opal
+4 Urza's Saga
+1 Relic of Sauron
+4 Giant's Boulder
+1 Paradox Engine
+3 Karn, the Great Creator
+4 Transmute Artifact
+4 Urza's Workshop
+3 Tezzeret, Cruel Captain
+
+Sideboard
+3 Disruptor Flute
+1 Soul-Guide Lantern
+1 Mycosynth Lattice
+2 Summon: Bahamut
+1 Mystic Forge
+2 Portable Hole
+1 Ensnaring Bridge
+1 Paradox Engine
+1 Tormod's Crypt

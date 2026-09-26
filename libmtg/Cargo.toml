@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/libmtg",
+    "crates/libmtg-engine",
+    "crates/libmtg-decklist",
+    "apps/libmtg-doomsday",
+    "apps/libmtg-forge",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/boryas/libmtg"
+authors = ["Boris Burkov <b.burkov@gmail.com>"]

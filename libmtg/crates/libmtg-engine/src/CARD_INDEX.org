@@ -1,0 +1,619 @@
+#+TITLE: libmtg-engine — Rules → Card Index
+#+STARTUP: content
+#+OPTIONS: toc:2 num:nil
+
+Maps CR rules and engine mechanics to the cards that use them.
+Given a rule or mechanic, find which cards exercise it and how.
+Identifies non-standard patterns.
+
+For engine architecture and primitive vocabulary, see [[file:DESIGN.org][DESIGN.org]].
+
+*Maintain this file*: when adding or modifying a card, update the relevant
+sections below. When adding a new engine primitive, add a section for it.
+
+* How to Read
+
+- *Standard* — uses existing engine primitives, no special logic.
+- *Notable* — correct but uses an unusual pattern worth knowing about.
+- *Abnormal* — workarounds, hardcoded shortcuts, or missing features.
+
+* Mechanic → IR Decomposition
+
+Canonical mapping from MTG oracle-text verbs (CR 701 and related) to engine
+primitives. *Effect context* = the verb appears as a spell/ability effect;
+*Cost context* = the verb appears as a cost component.
+
+| CR 701 verb                | Status | Engine entry point                                                                                                                         |
+|----------------------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------|
+| *Cast* (701.4)             | ✓      | ~cast_spell~ / ~GameEvent::SpellBeingCast~ (prohibition gate) + ~SpellCast~ (trigger source)                                               |
+| *Counter* (701.5)          | ✓      | ~counter_one(id, state, t, actor)~ · ~eff_counter_target(caster)~ · ~eff_counter_and_exile~                                                |
+| *Create* token (701.6)     | ✓      | ~eff_enter_permanent(controller, catalog_key)~ with ~is_token: true~ on the ~GameObject~                                                   |
+| *Destroy* (701.7)          | ✓      | ~destroy_one(id, state, t, actor)~ · ~eff_destroy_target(caster)~ · ~eff_destroy_all(caster, filter)~                                      |
+| *Discard* — cost (701.8)   | ✓      | ~Action::MoveByChoice { from: Hand, to: Graveyard, verb: Discard }~ (in ~CostBody::Ir~)                                                     |
+| *Discard* — effect         | ✓      | ~change_zone(id, ZoneId::Graveyard, ...)~ (no dedicated ~eff_discard~ yet; same end state)                                                 |
+| *Draw* (701.—)             | ✓      | ~eff_draw(who, n)~ · ~sim_draw~ — fires ~GameEvent::Draw~ through the full pipeline                                                        |
+| *Exile* — effect (701.11)  | ✓      | ~eff_exile_target(caster)~ · ~change_zone(id, ZoneId::Exile, ...)~                                                                         |
+| *Exile* — cost             | ✓      | ~Action::MoveByChoice { from: Hand, to: Exile, verb: Exile }~ (pitch costs; FoW/FoN ~$pitch~)                                               |
+| *Mill* (701.13)            | ✓      | ~Action::Mill~                                                                                                                             |
+| *Return* to hand           | ✓      | ~eff_bounce_target(caster)~ · ~change_zone(id, ZoneId::Hand, ...)~                                                                         |
+| *Return* to battlefield    | ✓      | ~eff_reanimate(actor)~ · ~change_zone(id, ZoneId::Battlefield, ...)~                                                                       |
+| *Sacrifice* — cost (701.17) | ✓     | ~Action::Sacrifice~ / ~Action::MoveByChoice { to: Graveyard, verb: Sacrifice }~ (in ~CostBody::Ir~)                                         |
+| *Search* (701.19)          | ✓      | ~eff_fetch_search(who, CardPredicate, to_zone)~ — searches library, puts card in ~to_zone~                                                 |
+| *Surveil* (701.30)         | ✓      | ~eff_surveil(who, n)~ — calls ~Strategy::surveil_choice~ per card (via ~with_strategy~)                                                     |
+| *Tap* — cost (701.21)      | ✓      | ~Action::Tap { target: Source }~ (in ~CostBody::Ir~)                                                                                       |
+| *Amass* (701.31)           | ✓      | Decomposed in IR: ~IfThen~ (no army? ~CreateToken~) + ~ForEach { PutCounters +1/+1 }~ — see [[*Amass (CR 701.44)][orcish_bowmasters]]      |
+| *Transform* (701.34)       | ✓      | ~Action::Transform { target }~ in-place flip (Delver) + ~Transformed~ event. "Exile, return transformed" (Tamiyo) = ~Sequence([Exile, Move→bf, Transform])~ (new object) |
+| *Scry* (701.18)            | ✓      | ~Action::Scry~ · ~eff_scry(who, n)~ (legacy closure)                                                                                       |
+| *Fight* (701.12)           | ✗      | Not implemented                                                                                                                            |
+| *Attach* (701.3)           | ✓      | ~Action::Attach { what, to }~ sets ~attached_to~ + fires ~BecameAttached~. Equip/Living-Weapon/ETB-attach all use it; detach via ~change_zone~ on LTB |
+| *Shuffle* (701.20)         | ✓      | ~Action::Shuffle { who }~ — zero-agency effect; "you may shuffle" = ~MayDo { Shuffle }~ (Ponder). ~Search.shuffle~ flag = fetch convenience |
+| *Investigate* (701.25)     | ~      | ~eff_create_clue(controller)~ (internal helper, not a named primitive)                                                                     |
+| *Double* (701.9)           | ✗      | Not implemented (double P/T, life, or mana — L7 CE or ~eff_mana~ extension)                                                                |
+| *Exchange* (701.10)        | ✗      | Not implemented                                                                                                                            |
+| *Reveal* (701.16)          | ~      | ~eff_reveal_hand(caster, target)~ — sets all hand cards to ~known: true~; no event fired                                                   |
+
+*Legend:* ✓ = implemented · ~ = partial/indirect · ✗ = not yet implemented · — = out of scope
+
+* Mana Production (CR 106)
+
+** Tap for mana (basic pattern)
+
+All basic lands, ABU duals, Great Furnace use ~tap_produces(mana_string)~.
+
+| Card                    | Produces     | Notes                       |
+|-------------------------+--------------+-----------------------------|
+| Basic lands (6)         | Single color | ~basic_land()~ helper       |
+| Snow-Covered basics (6) | Single color | ~snow_basic()~ helper       |
+| ABU duals (10)          | Two colors   | Two ~tap_produces~ calls    |
+| Great Furnace           | {R}          | Also typed as Artifact      |
+
+*Design gap (2026-05-10):* basic-land mana abilities are currently
+authored on each card via ~ir_tap_mana(color)~. The CR-correct model
+(CR 305.6) is that the ability is granted by the *basic land subtype*
+itself — Island grants ~{T}: Add U~, Swamp grants ~{T}: Add B~, etc.
+Underground Sea has both abilities because it has both subtypes. The
+right implementation is a single continuous effect keyed on subtype,
+not 50+ ~ir_tap_mana~ calls. Doing this would also make Urborg
+(grants Swamp subtype to all lands) and Blood Moon / Magus of the
+Moon (replace subtypes with Mountain) fall out for free instead of
+being special-cased. *Deferred* — finishing cost-IR migration is
+prioritized first; this is its own architectural pass.
+
+** Sacrifice for mana
+
+| Card               | Cost                | Produces             | Notes                                                                              |
+|--------------------+---------------------+----------------------+------------------------------------------------------------------------------------|
+| Lotus Petal        | Sac self            | Any color            | ~SacSelf~, ~produces_colors("WUBRG")~                                              |
+| Lion's Eye Diamond | Discard hand + sac  | 3 of any one color   | ~DiscardHand~ cost; ~timing: Instant~ (excluded from mana sub-loop)                |
+| Dark Ritual        | Cast (instant)      | BBB                  | Spell, not mana ability                                                            |
+
+** Conditional mana abilities
+
+| Card     | Condition                | Notes                             |
+|----------+--------------------------+-----------------------------------|
+| Mox Opal | Metalcraft (3+ artifacts) | ~condition: Some(metalcraft)~ predicate |
+
+** Colorless mana producers
+
+| Card                         | Produces         | Notes                                                                      |
+|------------------------------+------------------+----------------------------------------------------------------------------|
+| Ancient Tomb                 | CC               | Also ~eff_life_loss(who, 2)~                                               |
+| City of Traitors             | CC               | Has self-sacrifice trigger on another land played                          |
+| Cavern of Souls              | C or any color   | Two mana abilities; color-producing one lacks type restriction             |
+| Wastes / Snow-Covered Wastes | C                | ~tap_produces("")~                                                         |
+
+** Hand-zone mana ability (CR 605.3)
+
+| Card                 | Cost                | Produces |
+|----------------------+---------------------+----------|
+| Simian Spirit Guide  | Exile self from hand | {R}     |
+
+* Enters Tapped (CR 614.1 replacement)
+
+| Card                    | Condition                           | Mechanism                                                                                           |
+|-------------------------+-------------------------------------+-----------------------------------------------------------------------------------------------------|
+| MKM surveil duals (10)  | Always                              | IR ~AbilityKind::Replacement~ + ~ModifyEvent(EnterTapped)~ via ~surveil_dual()~                     |
+| Mistrise Village        | Unless you control Mountain/Forest  | IR ~AbilityKind::Replacement~ with ~condition: Count(controller's Mountains/Forests) == 0~          |
+
+* ETB Triggers (CR 603)
+
+** Search/tutor on ETB
+
+| Card                    | Finds                            | Destination |
+|-------------------------+----------------------------------+-------------|
+| Recruiter of the Guard  | Creature toughness ≤ 2           | Hand        |
+| Stoneforge Mystic       | Equipment (artifact subtype)     | Hand        |
+
+** Reanimate on ETB
+
+| Card                 | Target                    | Destination                            |
+|----------------------+---------------------------+----------------------------------------|
+| Pre-War Formalwear   | Own GY creature MV ≤ 3    | Battlefield (then auto-attach self)    |
+
+** Token creation on ETB
+
+| Card         | Token                  | Notes                                  |
+|--------------+------------------------+----------------------------------------|
+| Batterskull  | Phyrexian Germ 0/0     | Living-weapon; auto-attach             |
+| Cryptic Coat | Mysterious Creature 2/2 | Cloak simplification; auto-attach     |
+
+** Damage on ETB
+
+| Card              | Damage | Target                                           |
+|-------------------+--------+--------------------------------------------------|
+| Orcish Bowmasters | 1      | Any target (also triggers on opponent draws)     |
+| Fury              | 4      | Creature/planeswalker                            |
+
+** Destroy on ETB
+
+| Card         | Target                                                      |
+|--------------+-------------------------------------------------------------|
+| Meteor Sword | Any permanent (Union of Actor+Opp battlefield, ~pred_any()~) |
+
+** Choice on ETB (via ~etb_self_replacement~)
+
+| Card                 | Choice type  | Stored in            | Drives                                                                                                                                                                                                                                                                                                                                                                 |
+|----------------------+--------------+----------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Cavern of Souls      | CreatureType | ~bf.etb_choice~      | Colored mana restricted to creature spells (coarsened — ignores named type). Uncounterable (TODO: not enforced). *TODO*: proper fix requires tagging mana with conditions/effects so the engine can track "this mana was produced by Cavern for creature type X" and enforce uncounterable + type restriction at spend time. |
+| Painter's Servant    | Color        | ~bf.etb_choice~      | IR ~Static{AddColor(ChosenColor(Source))}~ (L5, scope None = every object)                                                                                                                                                                                                                                                                                              |
+| Disruptor Flute      | CardName     | ~bf.etb_choice~      | IR ~Static{CastingCostPlus(3)}~ (+3 cost) & ~Restriction{Activate}~ whose subject is ~Name(It)==ChosenName(Source) ∧ Not(activating_mana_ability)~ (suppress non-mana abilities of the named card) |
+| Engineered Explosives | (sunburst)  | ~obj.counters[Charge]~ | Reads ~resolving_costs_ctx.chosen_x~                                                                                                                                                                                                                                                                                                                                 |
+
+** Placeholder/incomplete ETB
+
+| Card                    | Issue                                                      |
+|-------------------------+------------------------------------------------------------|
+| Atraxa, Grand Unifier   | *Abnormal*: silently adds 4 cards; no strategy callback    |
+| Thassa's Oracle         | *Abnormal*: strategy checks directly; no actual trigger    |
+
+* ETB Replacements (CR 614.1 — "As ~ enters")
+
+Modify the ZoneChange event itself rather than triggering after it.
+
+| Card                    | What it replaces                            | Notes                                                                                          |
+|-------------------------+---------------------------------------------+------------------------------------------------------------------------------------------------|
+| Murktide Regent         | Sets counters from delve exile count        | Reads ~resolving_costs_ctx.objects_moved~                                                      |
+| Dauthi Voidwalker       | Opponent GY → Exile + Void counter          | ~dv_replacement_check~                                                                         |
+| Painter's Servant       | Stores color only (effect is an IR ability) | ~etb_self_replacement~                                                                         |
+| Cavern of Souls         | Stores creature type                         | ~etb_self_replacement~                                                                         |
+| Disruptor Flute         | Stores card name only (effects are IR abilities) | ~etb_self_replacement~                                                                    |
+| Engineered Explosives   | Sets Charge counters from X                 | ~etb_self_check~                                                                               |
+| MKM surveil duals (10)  | Sets ~bf.tapped = true~                     | IR ~Replacement~ + ~EventMod::EnterTapped~                                                     |
+| Mistrise Village        | Conditionally sets ~bf.tapped~              | IR ~Replacement~ + ~condition~ over battlefield (lowercase "mountain"/"forest" subtypes)       |
+| Karn / Tamiyo back      | Planeswalker loyalty setup                   | ~replacement_planeswalker_etb(N)~                                                              |
+
+* Triggered Abilities (CR 603)
+
+** Draw triggers
+
+| Card                        | Condition                        | Effect                                     |
+|-----------------------------+----------------------------------+--------------------------------------------|
+| Orcish Bowmasters           | Opponent non-natural draw        | 1 damage + Amass Orc 1                     |
+| Tamiyo, Inquisitive Student | Controller's natural draw        | Surveil; tracks draw count for transform   |
+
+** Spell-cast triggers
+
+| Card                     | Condition                         | Effect                              |
+|--------------------------+-----------------------------------+-------------------------------------|
+| Lavinia                  | Opponent spell, no mana spent     | Counter it                          |
+| Dragon's Rage Channeler  | Controller noncreature spell      | Surveil 1                           |
+| Cori-Steel Cutter (flurry) | Controller's second spell this turn | Create Monk Token, may attach    |
+| Monk Token (prowess)     | Controller noncreature spell      | +1/+1 until EOT (L7 CE)             |
+| Flusterstorm (Storm)     | Self cast                          | Copy N times                        |
+
+** Land-played trigger
+
+| Card              | Condition                      | Effect         |
+|-------------------+--------------------------------+----------------|
+| City of Traitors  | Controller plays another land  | Sacrifice self |
+
+** Attack triggers (CR 509.1)
+
+| Card                       | Condition    | Effect                                                      |
+|----------------------------+--------------+-------------------------------------------------------------|
+| Phelia, Exuberant Shepherd | Self attacks | Exile up to 1 other nonland permanent; delayed end-step return |
+
+Pattern: fires on ~EnteredStep { DeclareAttackers, active_player }~, gated by ~permanent_bf(source).attacking~.
+
+** Upkeep triggers
+
+| Card              | Condition                                   | Effect                                 |
+|-------------------+---------------------------------------------+----------------------------------------|
+| Delver of Secrets | Controller upkeep, instant/sorcery on top   | Transform → Insectile Aberration       |
+
+** Delayed triggers
+
+| Card                       | When              | Effect                                                                                           |
+|----------------------------+-------------------+--------------------------------------------------------------------------------------------------|
+| Sneak Attack               | Next end step     | IR ~ScheduleDelayedTrigger{AtStep End}~ → ~Sacrifice(It == target)~                              |
+| Fury (evoke)               | Self ETB with ~alt_cost_index~ set | Sacrifice self                                                                   |
+| Mishra's Bauble            | Next upkeep       | Draw 1; ~OneShot~ delayed ~TriggerInstance~                                                      |
+| Phelia, Exuberant Shepherd | Next end step     | Return exiled card under owner's control; +1/+1 counter if it returned under your control       |
+| Quantum Riddler (warp)     | Next end step     | Exile self; ~OneShot~ ~TriggerInstance~ registered when cast for warp cost                       |
+
+** Ward (CR 702.21)
+
+| Card             | Cost   | Notes                                                                          |
+|------------------+--------+--------------------------------------------------------------------------------|
+| Hexing Squelcher | 2 life | IR ~ir_ward~ (self) + ~Static{GrantAbility(ir_ward)}~ (other creatures); ~Action::Ward~ → ~ward_pay_or_counter~ |
+
+* Replacement Effects (CR 614.1)
+
+| Card                | Replaces                                      | With                                       |
+|---------------------+-----------------------------------------------+--------------------------------------------|
+| Leyline of the Void | Any card → GY                                 | → Exile                                    |
+| Dauthi Voidwalker   | Opponent's cards → GY                         | → Exile + Void counter                     |
+| Murktide Regent     | Self → BF                                      | Self → BF with counters                    |
+| Containment Priest  | Nontoken creature → BF (non-cast)             | → Exile; ~active_when: on_battlefield~     |
+
+* Prohibition Effects (CR 614.17)
+
+** "Can't be countered"
+
+| Card             | Scope                                                 | Mechanism                                                                                                                          |
+|------------------+-------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------|
+| Emrakul          | Self only                                             | ~ProhibitionDef~ on ~SpellBeingCountered~                                                                                          |
+| Long Goodbye     | Self only                                             | Same                                                                                                                               |
+| Hexing Squelcher | Self (stack) + all controller's spells (BF)           | ~cant_be_countered_self~ + IR ~Prohibition~ on ~SpellBeingCountered~ (Controller(It)==Controller, active_zone BF)                   |
+| Mistrise Village | Next spell this turn                                  | IR ~Action::GrantCEToNextSpellCast~ + ~CEMod::Uncounterable~ → ~LatentSpellMod~ → CI pushes ~ProhibitionDef~ onto the spell        |
+
+** "Can't enter the battlefield"
+
+| Card              | What                            | Mechanism                      |
+|-------------------+---------------------------------+--------------------------------|
+| Grafdigger's Cage | Creatures from GY/library → BF  | ~ProhibitionDef~ on ~ZoneChange~ |
+
+** "Can't cast"
+
+| Card              | What                           | Mechanism                       |
+|-------------------+--------------------------------+---------------------------------|
+| Grafdigger's Cage | Spells from GY/library         | L3 CE sets ~castable = false~   |
+| Lavinia           | Opponent noncreature MV > lands | L6 CE sets ~castable = false~  |
+
+* Continuous Effects / Layer System (CR 613)
+
+** L3 — Text Effects
+
+| Card                         | Effect                                                        |
+|------------------------------+---------------------------------------------------------------|
+| Omniscience                  | IR ~Static{AltCost(Free)}~, scope = controller's non-lands (zone-agnostic) |
+| Disruptor Flute              | +3 casting cost + suppress non-mana abilities for named card (now IR — see ETB-choice table) |
+| Dauthi Voidwalker (activated) | ~castable = true~ + free-cast on exiled card (EndOfTurn)     |
+| Grafdigger's Cage            | ~castable = false~ for GY/library cards                       |
+
+** L4 — Type Effects
+
+| Card                            | Effect                                                                           |
+|---------------------------------+----------------------------------------------------------------------------------|
+| Blood Moon / Magus of the Moon  | Nonbasic lands become Mountains · ~nonbasic_lands_are_mountains()~ shared        |
+| Urborg, Tomb of Yawgmoth        | All lands gain Swamp + {T}: Add {B} · ~each_land_gains_subtype()~ shared         |
+| Yavimaya, Cradle of Growth      | All lands gain Forest + {T}: Add {G} · Same                                      |
+
+** L5 — Color Effects
+
+| Card              | Effect                                                  |
+|-------------------+---------------------------------------------------------|
+| Painter's Servant | All objects gain chosen color (global filter)           |
+
+** L6 — Ability Effects
+
+| Card                       | Effect                                                                                                                 |
+|----------------------------+------------------------------------------------------------------------------------------------------------------------|
+| Karn, the Great Creator    | Suppress all abilities on opponent artifacts                                                                           |
+| Null Rod                   | Suppress all activated abilities on all artifacts (both players)                                                       |
+| Lavinia                    | ~castable = false~ on opponent noncreature spells                                                                      |
+| Hexing Squelcher           | Grants Ward to other creatures via IR ~CEMod::GrantAbility~ → ~granted_abilities~                                      |
+| Sneak Attack               | Grants Haste to sneaked creature (IR ~ApplyCE{AddKeyword(Haste)}~, EndOfTurn)                                          |
+| Cori-Steel Cutter          | Grants Trample + Haste to equipped creature via ~bf.attached_to~ filter                                                |
+| Mistrise Village           | IR ~Action::GrantCEToNextSpellCast~ with ~CEMod::Uncounterable~ — latent mod applies CE to the next spell cast that turn |
+| Dragon's Rage Channeler    | Delirium: grants Flying when ≥4 card types in GY                                                                       |
+| Pre-War Formalwear         | Grants Vigilance to equipped creature via ~bf.attached_to~ filter                                                      |
+
+** L7 — Power/Toughness
+
+| Card                     | Effect                                                              |
+|--------------------------+---------------------------------------------------------------------|
+| Toxic Deluge             | All creatures get -X/-X (EndOfTurn); IR ~ApplyCE{ target: AllObjects(creatures), PumpPT(-X,-X) }~ → one L7 CI (layer from ~writes~); SBA handles death at 0 toughness |
+| Dragon's Rage Channeler  | Delirium: +2/+2 when ≥4 card types in GY                            |
+| Cori-Steel Cutter        | +1/+1 to equipped creature via ~bf.attached_to~ filter              |
+| Monk Token (prowess)     | +1/+1 until EOT per noncreature spell (stacking CIs)                |
+| Meteor Sword             | +3/+3 to equipped creature via ~bf.attached_to~ filter              |
+| Pre-War Formalwear       | +2/+2 to equipped creature via ~bf.attached_to~ filter              |
+| Cryptic Coat             | +1/+0 to equipped creature via ~bf.attached_to~ filter              |
+
+* Alternate Costs (CR 118.9b)
+
+** Pitch (exile from hand)
+
+| Card              | Exile     | Extra cost | Condition     |
+|-------------------+-----------+------------+---------------|
+| Force of Will     | Blue card | 1 life     | —             |
+| Force of Negation | Blue card | —          | Not your turn |
+| Fury              | Red card  | —          | ~hand_min: 2~ |
+
+** Warp (CR 702.185 — alt cost + EOT exile)
+
+| Card            | Warp cost | Notes                                                                                                                                                                                                   |
+|-----------------+-----------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Quantum Riddler | {1}{U}    | ETB trigger checks ~alt_cost_index~ and registers a ~OneShot~ ~TriggerInstance~ that exiles on ~EnteredStep { End }~. *Abnormal*: "owner may cast from exile after current turn" not modeled. |
+
+** Life payment
+
+| Card                | Life                |
+|---------------------+---------------------|
+| Snuff Out           | 4                   |
+| Surgical Extraction | 2 (Phyrexian mana)  |
+
+** Return permanent
+
+| Card | What           |
+|------+----------------|
+| Daze | Island to hand |
+
+** Free cast (conditional)
+
+| Card                        | Condition                                           |
+|-----------------------------+-----------------------------------------------------|
+| Mindbreak Trap              | Opponent cast 3+ spells                             |
+| Omniscience (granted)       | IR ~Static{AltCost(Free)}~ → ~AlternateCost::default()~ via ~cemod_to_modifier~ |
+| Dauthi Voidwalker (granted) | Activated ability grants free-cast                  |
+
+* Activation Timing (CR 602.5b, 605.3a)
+
+~ActivationTiming~ enum on ~ManaAbility~ and ~AbilityDef~:
+- ~Default~ — natural speed (mana abilities: mana sub-loop; abilities: instant speed)
+- ~Instant~ — priority only, any stack state (excluded from mana sub-loop)
+- ~Sorcery~ — priority only, empty stack + main phase
+
+| Card               | Ability type   | Timing  | Notes                                                             |
+|--------------------+----------------+---------+-------------------------------------------------------------------|
+| Lion's Eye Diamond | ~ManaAbility~  | Instant | Can't activate during CR 601.2g mana sub-loop                     |
+| Tamiyo +2 (back)   | ~AbilityDef~   | Sorcery | Loyalty ability (generalizes ~is_loyalty_ability()~ check)        |
+
+* Additional Costs (CR 118.9d)
+
+| Card                 | Cost               | Notes                        |
+|----------------------+--------------------+------------------------------|
+| Bitter Triumph       | Discard OR 3 life  | ~CostOr~                     |
+| Toxic Deluge         | X life             | ~XLife~                      |
+| Engineered Explosives | X mana (sunburst) | ~XMana~                      |
+| Prismatic Ending     | X mana (converge)  | ~XMana~; converge = ~chosen_x + 1~ |
+| Consign to Memory    | Replicate {1}      | ~Replicate~                  |
+
+* Modal Spells (CR 700.2)
+
+| Card               | Modes                                                          | Notes                |
+|--------------------+----------------------------------------------------------------+----------------------|
+| Sheoldred's Edict  | 3: sac nontoken / sac token / sac PW                           | ~SpellModes::modal~  |
+| Brotherhood's End  | 2: 3 damage to creatures+PWs / destroy artifacts MV≤3          | ~SpellModes::modal~  |
+| Abrade             | 2: 3 damage to creature / destroy artifact                      | ~SpellModes::modal~  |
+
+* Keyword Abilities (CR 702)
+
+** Evasion / Combat
+
+| Keyword       | Cards                                                                                                                         |
+|---------------+-------------------------------------------------------------------------------------------------------------------------------|
+| Flying        | Emrakul, Griselbrand, Atraxa, Dragon's Rage Channeler (delirium), Insectile Aberration, Brazen Borrower, Quantum Riddler      |
+| Flash         | Brazen Borrower, Phelia, Exuberant Shepherd                                                                                   |
+| Shadow        | Dauthi Voidwalker                                                                                                             |
+| First Strike  | Engine-supported via split combat damage step (CR 510.5); no printed card currently has it                                    |
+| Double Strike | Fury — functional: deals damage in both the first-strike and regular combat damage steps                                       |
+| Trample       | Granted by Cori-Steel Cutter via L6 CE; functional in CombatDamage step (lethal-to-blockers, excess to player/PW)             |
+| Haste         | Granted by Sneak Attack via IR ~ApplyCE{AddKeyword(Haste)}~; also by Cori-Steel Cutter                                         |
+| Vigilance     | Granted by Batterskull, Pre-War Formalwear via L6 CE; functional in DeclareAttackers (skips tap)                              |
+| Lifelink      | Griselbrand, Atraxa; granted by Batterskull via L6 CE; functional in CombatDamage (controller gains life equal to damage dealt) |
+| Deathtouch    | Atraxa; functional in CombatDamage (any nonzero damage = lethal; trample-DT assigns 1 to blockers)                             |
+| Reach         | Engine-supported in declare-attackers/blockers; not currently on any printed card                                              |
+
+** Other
+
+| Keyword        | Cards                                 | Notes                                                                      |
+|----------------+---------------------------------------+----------------------------------------------------------------------------|
+| Delve          | Murktide Regent                       | ~data.delve = true~                                                        |
+| Storm          | Flusterstorm                          | Self-cast trigger creates ~StackAbility~ copies                             |
+| Replicate      | Consign to Memory                     | ~Action::Replicate(ManaCost)~ (in ~CostBody::Ir~ additional cost)          |
+| Ward           | Hexing Squelcher                      | IR ~ir_ward~ (Triggered + ~Action::Ward~ → ~ward_pay_or_counter~)          |
+| Protection     | Emrakul                               | ~protection_from: vec![obj_pred_colored_spell()]~                          |
+| Annihilator 6  | Emrakul                               | Stored as keyword; *not functionally modeled*                              |
+| Cycling        | Street Wraith, Edge of Autumn         | Street Wraith: hand ~AbilityDef~; Edge: *strategy-only*                    |
+| Living Weapon  | Batterskull                           | ETB trigger: create Phyrexian Germ token + auto-attach                     |
+| Prowess        | Monk Token (from Cori-Steel Cutter)   | Triggered ability: +1/+1 EOT per noncreature spell                         |
+| Ninjutsu       | Ingenious Infiltrator, Kaito          | ~ninjutsu_ability()~ helper                                                |
+
+* Keyword Actions
+
+** Counter (CR 701.5)
+
+| Card               | Target                              | Primitive                                                                                               |
+|--------------------+-------------------------------------+---------------------------------------------------------------------------------------------------------|
+| Force of Will      | Any spell                            | ~eff_counter_target~                                                                                    |
+| Force of Negation  | Noncreature                          | IR ~Sequence([Counter, Exile])~ — countered to GY, then exiled from GY (end state: exile)               |
+| Daze               | Any spell                            | ~eff_counter_unless_pays~ ({1})                                                                         |
+| Spell Pierce       | Noncreature                          | ~eff_counter_unless_pays~ ({2})                                                                         |
+| Flusterstorm       | Instant/sorcery                      | ~eff_counter_unless_pays~ ({1}) + storm copies                                                          |
+| Mindbreak Trap     | Any number                           | ~eff_exile_all_targets~ (exiles, doesn't counter)                                                       |
+| Consign to Memory  | Triggered ability or colorless       | IR ~Action::Counter~; ~Replicate {1}~ additional cost                                                   |
+| Stifle             | Activated or triggered ability       | ~eff_counter_target~; ~ObjectInZone { Stack, ir_ability() }~ (mana abilities never hit stack — CR 605.3a) |
+
+** Destroy (CR 701.7)
+
+| Card                      | Target                    | Primitive                                                               |
+|---------------------------+---------------------------+-------------------------------------------------------------------------|
+| Fatal Push                | Creature MV≤3             | ~eff_destroy_target~                                                    |
+| Snuff Out                 | Non-black creature        | ~eff_destroy_target~                                                    |
+| Long Goodbye              | Creature/PW MV≤3          | ~eff_destroy_target~ (uncounterable)                                    |
+| Bitter Triumph            | Creature/PW              | ~eff_destroy_target~                                                    |
+| Wasteland                 | Nonbasic land             | IR ~AbilityKind::Activated~ + ~Action::Destroy~                         |
+| Meteor Sword              | Any permanent             | ~eff_destroy_target~ (ETB trigger)                                      |
+| Abrade                    | Artifact (mode)           | ~eff_destroy_target~                                                    |
+| REB/Pyroblast/BEB/Hydroblast | Color-restricted       | ~counter_or_destroy~ / ~counter_or_destroy_if_color~                    |
+| Brotherhood's End         | Artifacts MV≤3 (mode)     | ~eff_destroy_all~                                                       |
+| Engineered Explosives     | Nonland MV=charges        | ~eff_destroy_all~                                                       |
+| Meltdown                  | Artifacts MV≤X            | ~eff_destroy_all~; ~XMana~ additional cost                              |
+
+** Exile (CR 701.10)
+
+| Card                       | Target                                        | Notes                                                           |
+|----------------------------+-----------------------------------------------+-----------------------------------------------------------------|
+| Swords to Plowshares       | Creature                                       | ~eff_exile_target_gain_power~                                   |
+| Surgical Extraction        | GY card + all copies                          | IR ~Sequence~ of 3× ~ForEach~ over ~AllObjects{Scoped(zone, Owner(target)), Name(it)=Name(target)}~ → ~Exile~ (GY/Hand/Library) |
+| Mindbreak Trap             | All targeted spells                            | ~eff_exile_all_targets~                                         |
+| Prismatic Ending           | Nonland permanent MV ≤ converge               | IR ~IfThen(Mv(target) ≤ Ctx::Var("x")+1, Exile)~; ~XMana~ additional cost (converge = X+1) |
+| Phelia, Exuberant Shepherd | Other nonland permanent (up to one)            | Inline ~change_zone~; pairs with delayed return trigger         |
+
+** Search (CR 701.19)
+
+| Card                   | Finds                        | Destination    |
+|------------------------+------------------------------+----------------|
+| Fetch lands (10)       | Land by subtype              | Battlefield    |
+| Recruiter of the Guard | Creature toughness≤2         | Hand           |
+| Stoneforge Mystic      | Equipment                    | Hand           |
+| Personal Tutor         | Sorcery                      | Library (top)  |
+| Green Sun's Zenith     | Green creature               | Battlefield    |
+| Urza's Saga            | Artifact, no colored pips, MV≤1 | Battlefield |
+
+** Sacrifice (CR 701.16)
+
+| Card              | What                | Trigger                              |
+|-------------------+---------------------+--------------------------------------|
+| Sheoldred's Edict | Opponent (modal)    | IR ~Action::Sacrifice { who: Opponent }~ (3-mode OnResolve) |
+| Fury (evoke)      | Self                | ETB when alt cost used               |
+| Sneak Attack      | Creature            | Delayed end-step trigger             |
+| City of Traitors  | Self                | Another-land-played trigger          |
+
+** Bounce (CR 701.15)
+
+| Card                          | Target                                  |
+|-------------------------------+-----------------------------------------|
+| Karakas                       | Legendary creature (either player's)    |
+| Brazen Borrower (Petty Theft) | Nonland permanent                       |
+
+** Discard (CR 701.8)
+
+| Card             | Amount | Filter  |
+|------------------+--------+---------|
+| Thoughtseize     | 1      | Nonland |
+| Hymn to Tourach  | 2      | Random  |
+
+** Draw (CR 701.9)
+
+| Card            | Amount          | Notes                                                                      |
+|-----------------+-----------------+----------------------------------------------------------------------------|
+| Brainstorm      | 3 (put back 2)  | ~eff_draw(3).then(eff_put_back(2))~                                        |
+| Griselbrand     | 7               | Pay 7 life ability                                                         |
+| Quantum Riddler | 1               | ETB trigger                                                                |
+| Street Wraith   | 1               | Cycling                                                                    |
+| Stock Up        | 2               | Simplified from "look at 5, pick 2"                                        |
+| Preordain       | 1               | Simplified from "scry 2, draw 1"                                           |
+| Ponder          | 1               | Simplified from "look at 3, pick 1"                                        |
+| Consider        | 1               | Simplified from "surveil 1, draw 1"                                        |
+| Clue Token      | 1               | IR ~AbilityKind::Activated~ + ~Action::Draw~; costs {2}, tap, sac          |
+| Mishra's Bauble | 1               | Delayed (next upkeep); tap + sac                                           |
+
+** Damage (CR 120)
+
+| Card              | Amount        | Target                                    |
+|-------------------+---------------+-------------------------------------------|
+| Lightning Bolt    | 3             | Any target                                |
+| Orcish Bowmasters | 1             | Any (ETB + draw trigger)                  |
+| Fury              | 4             | Creature/PW (ETB)                         |
+| Brotherhood's End | 3             | All creatures + PWs (mode)                |
+| Abrade            | 3             | Creature (mode)                           |
+| Unholy Heat       | 2/6           | Creature/PW (delirium: 6)                 |
+| Price of Progress | 2×nonbasics   | Each player                               |
+| Rough             | 2             | All creatures without flying              |
+| Tumble            | 6             | All creatures with flying                 |
+| Ancient Tomb      | 2             | Controller (life loss, not damage)        |
+
+** Surveil (CR 701.43)
+
+| Card                    | Amount                                         |
+|-------------------------+------------------------------------------------|
+| MKM surveil duals (10)  | 1 (ETB trigger)                                |
+| Dragon's Rage Channeler | 1 (noncreature spell-cast trigger)             |
+| Tamiyo                  | Strategy-driven                                |
+
+** Amass (CR 701.44)
+
+Decomposition: ~IfThen (no army?) { CreateToken(Orc Army 0/0) } → ForEach { PutCounters +1/+1 }~.
+See canonical example in [[file:card_defs.rs::fn orcish_bowmasters][~orcish_bowmasters~]].
+
+| Card              | Type | Amount |
+|-------------------+------+--------|
+| Orcish Bowmasters | Orc  | 1      |
+
+** Token creation
+
+| Card              | Token                    | Notes                                                                                                                          |
+|-------------------+--------------------------+--------------------------------------------------------------------------------------------------------------------------------|
+| Orcish Bowmasters | Orc Army 0/0             | Amass; grown by counters                                                                                                       |
+| Tamiyo            | Clue Token               | Artifact with {2}, tap, sac: draw 1                                                                                            |
+| Cori-Steel Cutter | Monk Token 1/1           | White creature with prowess; flurry trigger                                                                                    |
+| Batterskull       | Phyrexian Germ 0/0       | Black creature; living-weapon ETB                                                                                              |
+| Cryptic Coat      | Mysterious Creature 2/2  | Colorless; cloak ETB simplification (no ward, no face-down, not actually top of library)                                       |
+
+* Equipment / Attach (CR 301.5)
+
+Artifact subtype ~"Equipment"~ is stored in ~ArtifactData.subtypes~ and matched via
+~pred_has_subtype("Equipment")~ (which delegates to ~CardDef::has_subtype~).
+
+| Card              | Equip cost | Grants                  | Notes                                                                                                                                                 |
+|-------------------+------------+-------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Cori-Steel Cutter | {1}{R}     | +1/+1, trample, haste   | ~BattlefieldState.attached_to~; sorcery-speed equip; flurry auto-attaches                                                                             |
+| Stoneforge Mystic | —          | tutors Equipment to hand on ETB; {1}{W},{T} cheats one onto BF | Sorcery-timing activated ability; ~ChoiceSpec~ filters hand to Equipment                           |
+| Batterskull       | {5}        | +4/+4, vigilance, lifelink | Living-weapon ETB auto-creates Phyrexian Germ token and attaches; {3}: bounce self to hand                                                         |
+| Meteor Sword      | {3}        | +3/+3                   | ETB destroys target permanent (any) via ~eff_destroy_target~; sorcery-speed equip                                                                     |
+| Pre-War Formalwear | {3}       | +2/+2, vigilance        | ETB reanimates own-GY creature MV ≤ 3 and auto-attaches; sorcery-speed equip                                                                          |
+| Cryptic Coat      | —          | +1/+0                   | ETB cloaks (→ Mysterious Creature token) and auto-attaches; {1}{U}: bounce self. No equip ability.                                                    |
+
+* DFC / Adventure / Split (CR 712, 715)
+
+| Card              | Layout         | Notes                                                                |
+|-------------------+----------------+----------------------------------------------------------------------|
+| Tamiyo            | ~DoubleFaced~  | Front: creature; back: planeswalker                                  |
+| Delver of Secrets | ~DoubleFaced~  | Front: 1/1; back: 3/2 flying (Insectile Aberration)                  |
+| Brazen Borrower   | ~Split~        | Front: creature; back: adventure instant                             |
+| Rough // Tumble   | ~Split~        | True split card; Rough: 2 to non-flyers; Tumble: 6 to flyers         |
+
+* Multi-typed Cards
+
+| Card              | Types              | Notes                                                                                  |
+|-------------------+--------------------+----------------------------------------------------------------------------------------|
+| Great Furnace     | Land + Artifact    | ~types.push(CardType::Artifact)~ after construction                                    |
+| Painter's Servant | Creature + Artifact | Same pattern                                                                          |
+| Urza's Saga       | Artifact only      | *Notable*: real card is Enchantment Land Saga; saga system not implemented             |
+
+* Abnormal Implementations Summary
+
+** Missing functionality
+
+| Card                          | What's missing                                                                                                                                                |
+|-------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Emrakul                       | Extra turn on cast, annihilator 6 (functional), GY shuffle                                                                                                    |
+| Quantum Riddler               | "Draw N+1 instead of N while hand ≤ 1" replacement (rulings-level draw-instruction event absent); owner-may-cast-from-exile after warp                        |
+| Cryptic Coat                  | Cloak approximated by creating a Mysterious Creature token (no ward {2}, no face-down state, not actually top card of library, no turn-face-up); "can't be blocked" not modeled |
+| Atraxa                        | Real ETB (reveal 10, pick per type); placeholder adds 4 cards                                                                                                 |
+| Thassa's Oracle               | No ETB trigger; strategy checks directly                                                                                                                      |
+| Cavern of Souls               | Mana type restriction + uncounterable for named type                                                                                                          |
+| Tamiyo (back)                 | Only +2 loyalty ability modeled                                                                                                                               |
+| Brazen Borrower               | Front face missing Flying keyword                                                                                                                             |
+| Edge of Autumn                | No cycling AbilityDef; strategy handles manually                                                                                                              |
+| Consider/Stock Up/Ponder/Preordain | Selection simplified to draw N                                                                                                                           |
+
+** Non-standard patterns
+
+| Card              | Pattern                                                   | Why unusual                                                                                       |
+|-------------------+-----------------------------------------------------------+---------------------------------------------------------------------------------------------------|
+| Urza's Saga       | Artifact not Enchantment Land Saga; chapter III faked as a sacrifice-self *activated* ability | Saga system absent: no lore counters, no chapter triggers (CR 715), no SBA-driven sac when lore-count > final chapter. The current stub is the wrong shape — sac is automatic per CR 715.4, not paid by the controller as activation cost. **Do not use as a model for cost migration.** Replace once saga machinery lands. |
+| Hexing Squelcher  | Ward (~ir_ward~) granted to other creatures via ~CEMod::GrantAbility~ | First card to exercise IR Ward + IR CE-ability-granting (~granted_abilities~ + fire_triggers Part 5) |
+| Mistrise Village  | IR ~Action::GrantCEToNextSpellCast~ — latent, not a recompute-time CE | CR 611.2f spell-mod pattern: CE only exists once the qualifying spell is on the stack |
+| Painter's Servant | IR ~Static{AddColor(ChosenColor(Source))}~; ETB stores the color | ~ChosenColor~ reads ~etb_choice~ at recompute, so no closure CE                            |
+
+** Intentional simplifications
+
+| Card                       | Simplification                    | Rationale                             |
+|----------------------------+-----------------------------------+---------------------------------------|
+| Doomsday                   | Sets ~success = true~             | Win-probability sim, not full game    |
+| Ponder/Stock Up/Consider   | Draw N instead of selection       | Library order not fully tracked       |
+| Fetch lands                | Implicit shuffle                  | Library order not tracked             |

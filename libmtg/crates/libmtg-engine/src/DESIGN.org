@@ -1,0 +1,852 @@
+#+TITLE: libmtg-engine — Engine Design
+#+STARTUP: content
+#+OPTIONS: toc:2 num:nil
+
+Engine architecture and primitive vocabulary. For mechanic↔card mapping and
+decomposition of MTG mechanics into IR primitives, see [[file:CARD_INDEX.org][CARD_INDEX.org]].
+
+* Central state: ~SimState~
+
+Everything lives in ~SimState~. Key fields:
+
+- ~objects: HashMap<ObjId, GameObject>~ — every card in every zone, keyed by stable id
+- ~catalog: HashMap<String, CardDef>~ — base card definitions; populated once at init, never mutated
+- ~stack: Vec<ObjId>~ — spell/ability stack (LIFO)
+- ~abilities: HashMap<ObjId, StackAbility>~ — triggered/activated abilities on the stack
+- ~trigger_instances~, ~replacement_instances~, ~prohibition_instances~, ~continuous_instances~ — live ability registrations
+- ~us: PlayerState~, ~opp: PlayerState~ — player state (life, mana pool, draw count, etc.)
+
+* Identity: ~ObjId~
+
+A single ~u64~ newtype. Every object in the game — permanents, spells on stack, triggered
+abilities, players — is identified by an ~ObjId~. ~ObjId::UNSET~ (0) is the null sentinel.
+~state.alloc_id()~ is the only way to mint a new one.
+
+* Objects and zones
+
+~GameObject~ carries ~catalog_key~ (card name), ~owner~, ~controller~, ~is_token~,
+~materialized: Option<CardDef>~, and a single ~role: ObjectRole~ that encodes *what kind*
+of object it is plus the per-kind state:
+- ~Library~ · ~Hand { known }~ · ~Graveyard~ · ~Exile { on_adventure }~ (payload-free)
+- ~Battlefield(BattlefieldState)~ — a permanent
+- ~StackSpell(SpellState)~ — a spell on the stack
+- ~StackAbility(AbilityState)~ — a card-less ability on the stack
+- ~Player(PlayerState)~ — a player; **no zone** (kind is separate from zone)
+This makes illegal states (a permanent with no battlefield state, an ability in the graveyard)
+unrepresentable. **Players are first-class objects**: the two players are ~GameObject~s in
+~objects~ (ids ~us_id~/~opp_id~); reach their state via ~player(who)~/~player_mut(who)~. So
+targeting, filtering, damage and iteration treat players uniformly — e.g. Price of Progress is
+~ForEach(Expr::Players, …)~ and ~DealDamage~ to a player object is life loss. (Emblems will join
+the same way, in the command zone.)
+Accessors: ~obj.zone() -> Option<Zone>~ (None for a player) — prefer ~obj.in_zone(z) -> bool~,
+which matches on the role kind and is false for zoneless objects; ~obj.bf()/.bf_mut()~,
+~obj.spell()/.spell_mut()~, ~obj.ability()~, ~obj.player_state()/.player_state_mut()~ return the
+payload for the matching role. ~obj.set_zone(zone)~ transitions to a payload-free zone or the battlefield.
+
+~Zone~ is the (optional) derived coarse zone (fine variants ~Hand { known }~, ~Exile { on_adventure }~).
+~ZoneId~ is the coarse enum used in events and effects. ~card_zone_to_id~ converts between them.
+
+All zone transitions go through ~change_zone(id, to, state, t, actor)~, which fires the event
+pipeline. Never move a card by writing to ~obj.role~ directly outside the central writers.
+
+* Two views of a card's characteristics
+
+~state.catalog.get(name)~ — the base ~CardDef~ as defined at load time. Use for
+bootstrap lookups (e.g. cards in library/graveyard that have no in-play state).
+
+~state.def_of(id)~ — the materialized ~CardDef~ for an object currently in play,
+with all continuous effects applied. Use this for any characteristic read of an
+object on the battlefield. Returns ~None~ if the object has no materialized state.
+
+~recompute(state)~ rebuilds all materialized views by folding continuous instances
+over the base catalog entry for each object. Call it before any decision that
+reads P/T, types, or abilities of permanents.
+
+* The event pipeline: ~fire_event~
+
+Every observable game action fires a ~GameEvent~ through ~fire_event~, which runs:
+
+1. *Prohibition check* (CR 614.17) — any active ~ProhibitionInstance~ whose ~check~
+   returns ~true~ suppresses the event entirely. "Can't" effects take precedence over
+   replacements (CR 101.2); the event never reaches Stage 2.
+2. *Replacement check* — first matching active ~ReplacementInstance~ intercepts;
+   its effect runs instead and may re-fire a modified event. Loop prevention via
+   ~repl_applied~ (cleared at depth 0).
+3. *State mutation* — the event's own effect runs (zone change, draw, etc.).
+4. *Trigger check* — ~fire_triggers~ walks all active ~TriggerInstance~ s;
+   matching ones append ~TriggerContext~ s to ~pending_triggers~.
+5. *Log* — ~log_event~ derives display info from ~state.objects~ via ~id~.
+
+~GameEvent~ variants: ~ZoneChange { id, actor, from, to, controller }~, ~Draw~,
+~EnteredStep~, ~EnteredPhase~, ~CreatureAttacked~, ~SpellBeingCast { caster, card_id, mana_value, is_noncreature }~,
+~SpellCast { caster, card_id, mana_spent }~.
+
+~fire_event~ returns ~bool~ — ~true~ iff the event was suppressed by a prohibition.
+Callers that need to gate on prohibition (e.g. ~cast_spell~) check the return value;
+all other call sites ignore it.
+
+* The three instance types
+
+** ~TriggerInstance~
+
+A card's triggered ability registration.
+- ~check: TriggerCheckFn~ — ~fn(&GameEvent, source_id, controller, &SimState, &mut Vec<TriggerContext>)~
+- Appends a ~TriggerContext~ to ~pending~ if the event matches.
+- ~TriggerContext~ carries the effect closure and target spec; pushed to the stack
+  as a ~StackAbility~ at the next priority window.
+
+** ~ProhibitionInstance~
+
+A "can't happen" suppression (CR 614.17).
+- ~check: ProhibitionCheckFn~ — ~Arc<dyn Fn(&GameEvent, source_id, controller, &SimState) -> bool>~
+- Returns ~true~ if the event is prohibited; the event is dropped with no state mutation.
+- Takes ~&SimState~ (unlike ~ReplacementCheckFn~) because prohibition often needs to inspect
+  the type of the affected object (e.g. Grafdigger's Cage checks ~is_creature()~ on the card
+  entering from GY/library). Checked before replacements (Stage 1).
+- Stored on ~CardDef.prohibition_defs: Vec<ProhibitionDef>~ and activated with the permanent.
+
+** ~ReplacementInstance~
+
+A replacement effect registration.
+- ~check: ReplacementCheckFn~ — ~Arc<dyn Fn(&GameEvent, source_id, controller) -> Option<Vec<ObjId>>>~ (Arc allows captures)
+- Returns ~Some(targets)~ if it applies, ~None~ otherwise.
+- ~effect: Effect~ — runs instead of the original event.
+
+** ~ContinuousInstance~
+
+A static or temporary ability affecting characteristics.
+- ~layer: ContinuousLayer~ — determines application order (L4 = type-changing, L7 = P/T).
+- ~reads: Vec<CeReads>~ — what characteristics this CE reads from targets (CR 613.7).
+- ~writes: Vec<CeWrites>~ — what characteristics this CE writes on targets.
+- ~timestamp: u32~ — registration sequence; tiebreaker after dependency ordering (CR 613.6).
+- ~filter: ContinuousFilterFn~ — which objects it applies to.
+- ~modifier: ContinuousModFn~ — mutates a ~CardDef~ in place.
+- ~expiry: ContinuousExpiry~ — ~EndOfTurn~, ~WhileSourceOnBattlefield~,
+  ~StartOfControllerNextTurn~.
+
+*CE application order* — ~recompute~ applies CIs *CE-by-CE* (not object-by-object).
+Within each layer, CIs are topologically sorted by dependency (CR 613.7): if CE_B writes
+a category that CE_A reads, A depends on B and B applies first. Ties broken by timestamp
+(CR 613.6). Cycles fall back to timestamp order. After each CI is applied, CIs from
+~WhileSourceOnBattlefield~ sources whose static abilities were stripped by an earlier CE
+(e.g. Blood Moon stripping Yavimaya) are skipped.
+
+*~CeReads~ / ~CeWrites~* — descriptor enums with variants: ~LandTypes~, ~Supertypes~,
+~Abilities~, ~Color~, ~PowerToughness~, ~CardTypes~. Each CI declares what it reads and
+writes; the topo sort uses same-category overlap to detect dependencies.
+
+* Instance lifecycle
+
+Two categories: *card-bound* and *ephemeral*.
+
+*Card-bound* — triggers, replacements, prohibitions, and static abilities defined in
+~CardDef~. Evaluated from the catalog at event/recompute time; never stored as instances.
+~active_when~ predicates (e.g. ~tp_on_battlefield()~) gate whether they apply.
+
+*Ephemeral* — runtime-created ~TriggerInstance~, ~ReplacementInstance~, and
+~ContinuousInstance~. Created by ability effects (e.g. Sneak Attack's delayed trigger).
+Principle: *existence = active* — no ~active~ flag; presence in the vec means active.
+
+- ~Expiry::WhileSourceOnBattlefield~ — CIs removed in ~change_zone~ when source leaves BF.
+- ~Expiry::OneShot~ — triggers removed after firing once (e.g. delayed triggers).
+- ~Expiry::EndOfTurn~ — CIs removed at cleanup step.
+
+~LatentSpellMod~ — pre-cast hook (CR 611.2f). When a spell is cast, ~consume_latent_spell_mod~
+checks if any latent mod's predicate matches; if so, materializes a CI for that spell.
+Used by Mistrise Village ("next spell can't be countered").
+
+* Effects and factories
+
+~Effect~ wraps ~Arc<dyn Fn(&mut SimState, u8, &[ObjId])>~.
+Built from composable primitives (~eff_draw~, ~eff_destroy_target~, ~eff_fetch_search~, etc.)
+and chained with ~.then()~. Never inspect card names or types inside an effect —
+use predicates and ~ObjId~ s captured at factory time.
+
+- ~SpellFactory = Arc<dyn Fn(PlayerId, ObjId, u32) -> Effect>~ — built at card load time, called at cast time.
+  The ~u32~ is ~chosen_x~ (strategy-chosen X value; 0 for non-X spells). ~SpellData.has_x_cost: bool~
+  marks X spells; the engine pays ~Life(chosen_x)~ and ~Strategy::choose_x_for_spell~ (default: 3) picks X.
+- ~AbilityFactory = Arc<dyn Fn(PlayerId, ObjId) -> Effect>~ — same pattern.
+- ~StaticAbilityDef = Arc<dyn Fn(ObjId, PlayerId) -> ContinuousInstance>~ — called during recompute for BF sources.
+- ~ReplacementDef.check~ receives ~(&GameEvent, ObjId, PlayerId, &SimState)~ — state access enables checks like ~is_token~ or ~is_creature~.
+
+* Card definitions
+
+~CardDef~ holds ~kind: CardKind~ (Land/Creature/Artifact/Instant/Sorcery/Planeswalker/Enchantment),
+~colors~, ~types~, ~supertypes~, ~trigger_defs~, ~replacement_defs~, ~prohibition_defs~, ~static_ability_defs~.
+
+Cards are defined in [[file:card_defs.rs][card_defs.rs]] using ~CardDef::new(...)~. The engine never references
+specific card names — it only calls the closures stored on the def.
+
+* Composition primitives
+
+Before adding a new variant or primitive, check whether the concept decomposes into
+existing ones. The available layers:
+
+** ~CardPredicate~
+
+([[file:predicates.rs][predicates.rs]]) — ~Arc<dyn Fn(&CardDef) -> bool>~.
+- Combinators: ~pred_and~, ~pred_or~, ~pred_not~, ~pred_any~.
+- Atomics: ~pred_type_eq~, ~pred_has_color~, ~pred_has_supertype~, ~pred_land_subtype~,
+  ~pred_mana_value_le~, ~pred_toughness_le~, ~pred_no_colored_pips~.
+- Used for: targeting filters, fetch search, continuous effect applicability.
+
+** ~ObjPredicate~
+
+([[file:predicates.rs][predicates.rs]]) — ~Arc<dyn Fn(ObjId, &SimState) -> bool + Send + Sync>~.
+State-aware predicate over any game object. Renamed from ~CostPredicate~; now also used for
+~ObjectInZone.filter~ (targeting) and ~ChoiceSpec.filter~ (resolution-time choice enumeration).
+- Combinators: ~cost_pred_and~, ~cost_pred_or~, ~cost_pred_not~.
+- Atomics: ~obj_pred_from_card~ (lifts ~CardPredicate~),
+  ~cost_pred_unblocked_attacker~, ~cost_pred_land~, ~pred_has_counter(ct: CounterType)~.
+- Used for: cost component predicates (~DiscardCard~, ~ExileFromHand~, etc.), ~ObjectInZone~ targeting,
+  and ~ChoiceSpec~ choice enumeration.
+
+** ~TargetSpec~
+
+([[file:predicates.rs][predicates.rs]]) — declarative target description.
+- ~None~ — no target required.
+- ~Player(Who)~ — a player.
+- ~ObjectInZone { controller, zone, filter: Filter }~ — any object in a zone, spells
+  AND abilities included (everything on the stack is a ~GameObject~). "Counter target
+  spell" = ~filter: ir_spell()~; "counter target ability" = ~ir_ability()~; "spell or
+  ability" = one ~ir_or(...)~. (There is no longer an ~AbilityOnStack~ variant.)
+- ~Union(Vec<TargetSpec>)~ — logical OR; use to express "A or B" targets.
+
+** ~ChoiceSpec~
+
+([[file:catalog.rs][catalog.rs]]) — resolution-time "choose" (CR: not targeting).
+Stored on ~AbilityDef.choice_spec: Option<ChoiceSpec>~ and carried into ~StackAbility~.
+At resolution, ~enumerate_choices(spec, controller, state)~ builds the candidate list;
+~strategy.choose_for_effect(effect_id, &choices, state)~ picks one; the chosen ~ObjId~
+is prepended to the effect's ~targets~ slice. ~effect_id~ is the ~StackAbility~ 's ObjId.
+
+** ~CounterType~
+
+([[file:mod.rs][mod.rs]]) — typed enum of counter kinds (currently: ~Void~).
+Stored in ~GameObject.counters: HashMap<CounterType, u32>~ — survives zone changes.
+
+** Free-cast grants
+
+Dauthi Voidwalker, Omniscience work via continuous effects that set
+~castable = true~ and push ~AlternateCost::default()~ (a {0} cost) onto the card's
+~alternate_costs~. No special engine plumbing — the card goes through the normal cast
+sub-machine. ~collect_legal_actions~ scans exile (and hand) for castable cards.
+
+** ~ManaAbility~
+
+([[file:catalog.rs][catalog.rs]]) — how a permanent produces mana.
+Fields: ~costs: Vec<CostComponent>~, ~produces: Vec<Color>~ (for affordability prediction),
+~produces_count: usize~ (default 1; 2 for Ancient Tomb), ~make_effect: ManaEffectFactory~.
+
+~ManaEffectFactory = Arc<dyn Fn(PlayerId, Option<Color>) -> Effect + Send + Sync>~ — factory
+called at activation time. ~Option<Color>~ is the specific pip being drawn in the color loop
+(~None~ for generic-slot activation). Fixed-color sources ignore it; any-color sources
+(Lotus Petal, Cavern) use it to produce the right pip. ~eff_mana~ is the standard primitive.
+Side effects (e.g. Ancient Tomb: "deal 2 damage") are chained via ~.then()~.
+
+~GameEvent::ManaProduced { who: PlayerId, spec: String }~ — fired by ~eff_mana~ through the
+event pipeline so replacement effects can intercept (e.g. Damping Sphere). State mutation
+(~do_effect~) parses ~spec~ and adds to ~ManaPool~. Mana abilities bypass the stack per
+CR 605.3b; ~produce_mana~ remains a synchronous call path.
+
+** ~CostComponent~
+
+([[file:catalog.rs][catalog.rs]]) — a single payable cost.
+- Combinators: ~CostAnd(Vec<CostComponent>)~, ~CostOr(Vec<CostComponent>)~.
+- Atomics: ~Mana~, ~TapSelf~, ~SacSelf~, ~DiscardSelf~, ~Life~, ~SacPermanent~,
+  ~DiscardCard~, ~ExileFromHand~, ~ReturnFromBattlefield~, ~TapPermanent~, ~LoyaltyAdjust~,
+  ~Replicate(ManaCost)~ (optional, repeatable — see ~cast_spell~ for copy logic),
+  ~XLife~ (variable life payment; X is strategy-chosen — see [[*X spells and ~XLife~][X spells and XLife]]).
+
+** ~ChoiceRequest~ / ~ChoiceResult~
+
+([[file:mod.rs][mod.rs]]) — typed strategy choices inside effects.
+Used when an effect needs a decision that is not a target (~TargetSpec~) and not an object
+selection (~ChoiceSpec~): specifically, choices over abstract typed values.
+- Variants: ~ChoiceRequest::Color~, ~CreatureType~, ~CardName~, ~Mode~, ~WardPayment~,
+  ~MayPutOnBattlefield~, ~MayAttach~.
+- Routed through the deciding player's strategy: ~Strategy::resolve_choice(source, &req, state) -> ChoiceResult~.
+- Engine code reaches it via ~state.with_strategy(decider, |s, st| s.resolve_choice(source, &req, st))~ —
+  identify *which player* makes the choice and pass that ~PlayerId~ as ~decider~.
+- Default (trait default method): Blue / "Wizard" / "" / Mode 0 / pay-ward / decline-may.
+  Tests ~set_strategy~ a ~TestStrategy~ on the relevant player to force a specific choice.
+- Current users: Painter's Servant ETB (Color), Cavern of Souls ETB (CreatureType), Disruptor Flute ETB (CardName).
+
+** ~Strategy::surveil_choice~
+
+([[file:strategy.rs][strategy.rs]]) — ~fn surveil_choice(&mut self, id: ObjId, state: &SimState) -> bool~.
+Strategy method for surveil. Given the ~ObjId~ of the card being surveiled, returns ~true~
+to put it in the graveyard, ~false~ to keep it on top. Reached per-player via ~with_strategy~.
+Default: bin cards the evaluator scores below 0.3 (delegates to ~state.evaluate_card~).
+Tests force outcomes via ~TestStrategy::surveil(mill)~. Current user: ~eff_surveil~ in [[file:effects.rs][effects.rs]].
+
+** ~BattlefieldState.etb_choice~
+
+([[file:mod.rs][mod.rs]]) — ~Option<ChoiceResult>~. Uniform storage for the
+choice a permanent made as it entered. Written by ETB replacement closures that call
+~resolve_choice~; cleared automatically on LTB when ~bf~ is dropped. Convention: any ETB
+replacement that calls ~resolve_choice~ MUST write the result here. Most cards also capture
+the value in their CE closure; ~etb_choice~ is the side-channel for abilities needing to
+inspect "what was named" without a captured copy.
+
+** ~CardDef.casting_cost_modifier~
+
+([[file:catalog.rs][catalog.rs]], default 0) — generic-mana surcharge ~i32~
+applied by CE (e.g. Disruptor Flute). Added to ~ManaCost.generic~ during affordability checks
+in ~spell_is_affordable~. Reset to 0 each ~recompute~ (materialized starts from catalog clone).
+
+** ~CardDef.non_mana_abilities_suppressed~
+
+([[file:catalog.rs][catalog.rs]], default false) — ~bool~ set by CE
+to suppress non-mana activated abilities (e.g. Disruptor Flute, Pithing Needle). Checked by
+~ability_available~ in [[file:strategy.rs][strategy.rs]]. Does NOT affect ~ManaAbility~ s — those are a separate
+type on a separate code path. Null Rod (suppress ALL activated abilities including mana) would
+need a companion ~mana_abilities_suppressed~ field.
+
+** ~etb_self_replacement~
+
+([[file:catalog.rs][catalog.rs]]) — ~fn<F>(extra) -> ReplacementDef~. Builds an ETB
+self-replacement that handles the boilerplate (extract id, ~current_zone_id~, ~fire_event~) and
+calls ~extra(source_id, id, controller, state, t)~ after the zone-change fires.
+
+** ~etb_self_trigger~
+
+([[file:catalog.rs][catalog.rs]]) — ~fn<F>(source_name, target_spec, make_effect) -> TriggerCheckFn~.
+Builds a trigger check fn that fires when this permanent enters under its controller's control
+and pushes a ~TriggerContext~ with the given spec and effect.
+
+** X spells and ~XLife~
+
+Cards with "as an additional cost, pay X life" (e.g. Toxic Deluge)
+use ~CardDef.additional_costs = vec![CostComponent::XLife]~. The X value flows as:
+
+- ~Strategy::choose_x_for_spell(card_id, state) -> u32~ — trait method, default 3.
+- ~AnnounceChoice { chosen_x: u32, .. }~ — strategy communicates the choice via ~announce~ callback.
+- ~can_pay_costs(..., chosen_x: u32)~ / ~pay_costs(..., chosen_x: u32)~ — both accept X.
+  ~XLife~ checks ~life >= chosen_x~ and deducts on payment, recording in ~CostsPaidCtx.chosen_x~.
+- ~SpellFactory = Arc<dyn Fn(PlayerId, ObjId, u32) -> Effect>~ — third arg is ~chosen_x~;
+  non-X spells receive 0 and ignore it (~_x~).
+- ~CardDef.additional_costs~ lives on the ~CardDef~ wrapper, not on ~SpellData~.
+
+* IR Census
+
+Tracks the generality and composability of the IR vocabulary over time. See
+[[file:CARD_INDEX.org::*Mechanic → IR Decomposition][Mechanic → IR Decomposition]] for
+the canonical mapping from MTG mechanics to IR primitives.
+
+** Principle: the filter space is the materialized game state
+
+The ~Filter~/~Expr~ space should, *in principle*, be able to project **every axis
+of the materialized game state** — because that is how Magic works (CR 109.3
+characteristics + zone/player/global state, any of which a filter may reference).
+The target is every axis of materialized *state* (card characteristics *plus*
+player/global state: life, hand size, "controls N artifacts", monarch, the spell
+being cast), not just card characteristics. It is finite and enumerable, so the
+space is exhaustible in principle. **Filter-completeness is downstream of
+state-modelling completeness:** you can filter exactly what the engine chooses to
+materialise.
+
+Because filters are pure queries over the one materialised, effects-applied view
+("reads see all writes"), they respect CEs/replacements for free. The invariant:
+*the only legitimate reason a filter cannot be written is missing state
+vocabulary — never missing compute.* No closures.
+
+This makes "can't express it as a projection of materialised state" a two-way
+bug detector:
+1. *Needs an escape-hatch closure* → either (a) the state is real but unmodelled
+   — add the ~Expr~ projection (this is what ~ZoneLit~ / ~IsToken~ /
+   ~GameCtx::CastingSpell~ were), or (b) it is not actually a filter — it is an
+   action or context masquerading as a characteristic test.
+2. *Reads the printed/catalog value instead of the materialised view* → a CE bug
+   ("target red creature" means red *now*, post-layers; read ~Colors(It)~ →
+   ~card_def_of~, never ~CardDef.colors~).
+
+Subtleties: filters are unary over *(object, context)* — "another creature",
+"equipped by me", "It != Source" need a reference frame (Source / controller /
+triggering event), supplied via the ~obj_matches~ env contract; and some axes are
+*temporal* (died this turn, spells cast this turn), living in the event
+log / per-turn accumulators, so "materialised state" means snapshot **+** history.
+
+*Read/write mirror — a concrete completeness criterion for this census:* the state
+axes are the spine. ~Expr~ *reads* an axis; ~CEMod~ *writes* it. For a real
+characteristic you usually want both (test a colour and change a colour; test a
+type and add a type). Auditing "is the filter space complete" is the same as "is
+the CE space complete": enumerate the materialised state's fields and check each
+has a projection (~Expr~) and, where the rules allow, a modifier (~CEMod~). Any
+axis with one and not the other is an asymmetry worth a second look.
+
+** Discipline rules
+
+1. *No mechanic-named Action/CEMod/Expr variants.* Names describe *structural*
+   operations (~Move~, ~PutCounters~, ~IfThen~), never MTG mechanics (no ~Amass~,
+   ~Flashback~, ~Cascade~, ~Storm~). Every new mechanic must map into existing
+   primitives or justify a new primitive in structural terms.
+2. *No escape hatches.* ~Action::Custom~ is deleted and stays deleted. If a card
+   cannot be expressed, the answer is either (a) a new *structural* primitive with
+   written justification, or (b) extending an existing primitive's fields. Never a closure.
+3. *Justification bar for new variants.* Adding an ~Action~, ~CEMod~, ~Expr~, or
+   ~AbilityKind~ variant requires:
+   - Written rationale: what structural operation does it represent, not what mechanic.
+   - Survey: which other existing/future cards would reuse it? (Min 2 unrelated uses,
+     or a clear CR-level concept like "continuous effect" that is obviously general.)
+   - Decomposition attempt: show the ~Sequence~/~IfThen~/~ForEach~ version and argue why
+     it's insufficient (not expressible, loses agency, crosses a layering boundary).
+
+** Red flags
+
+- A variant whose doc comment names a specific MTG mechanic.
+- Multiple variants that differ only in one field (merge them).
+- ~if let Action::X~ dispatch in the executor that special-cases one mechanic.
+- Strategy callbacks making mechanic-specific decisions vs. answering generic questions
+  ("pick a target" vs. "pick a flashback target").
+
+** Review cadence
+
+- *Every 5 cards ported*: quick audit — did new variants appear? Justified?
+- *Every 20 cards*: full census update below. Look for unused primitives (candidates for
+  removal) and near-duplicates (candidates for merging).
+- *Before adding any card*: check if its mechanic is already in the
+  [[file:CARD_INDEX.org::*Mechanic → IR Decomposition][decomposition table]].
+  If not, design the decomposition *before* writing code.
+
+** Current census
+
+*** 2026-04-25 — Stage 4 Phase 1 (ManaAbility IR migration)
+
+*SUPERSEDED (see 2026-06-03 below): ~AbilityKind::Mana~ and ~ProducesSpec~ were
+later deleted — mana production folded into ~AbilityKind::Activated~ +
+~Action::AddMana~, with a structural ~is_mana_ability~ detector replacing the
+variant. Kept as a point-in-time record.*
+
+One new ~AbilityKind~ variant (~Mana~) and one supporting enum (~ProducesSpec~ —
+~Fixed(Vec<Color>)~ / ~AnyOneColor~) cover ~33 cards in this batch. ~Mana~ takes
+~cost~, ~produces~, ~produces_count~, ~on_activate: Option<Action>~,
+~condition: Option<Expr>~, ~timing~, and ~active_zone: ZoneKindSel~. CR 605.3b
+stack-bypass is enforced by the executor (the ~ir_mana_as_legacy~ bridge in
+~ir/executor.rs~ synthesizes a legacy ~ManaAbility~ at ~build_catalog~ time so
+the existing synchronous mana sub-loop picks them up unchanged).
+
+Cards ported this round:
+- 18 lands: Island, Swamp, Plains, Mountain, Forest, Wastes, all 6 snow basics,
+  all 10 ABU duals, Great Furnace, Ancient Tomb (~on_activate~ → ~PayLife 2~).
+- 4 mana-ability artifacts: Lotus Petal, Lion's Eye Diamond (~Instant~ timing),
+  Mox Opal (~condition~ = ~Count(controller's artifacts) >= 3~), Simian Spirit
+  Guide (~active_zone: Hand~).
+- 4 vanillas already IR-clean (no abilities to port): Barrowgoyf, Orc Army,
+  Phyrexian Germ, Mysterious Creature.
+
+Reuse: ~AbilityKind::Mana~ used by 23 distinct cards in one phase — easily
+clears the ≥2-reuse bar. ~ProducesSpec::Fixed~ used by 21 cards;
+~ProducesSpec::AnyOneColor~ used by 3.
+
+Decomposition attempt: a flat ~AbilityKind::Activated~ with mana-side-effect in
+the body was rejected because activated abilities use the stack (CR 113.3, CR
+605.3b) — mana abilities specifically do not. Splitting into ~Activated~ + a
+sentinel "this resolves synchronously" flag would be a mechanic-named escape
+hatch on a structural variant; ~Mana~ is the structurally honest split.
+
+Decomposition depth of hardest mechanic this round: Ancient Tomb's
+~on_activate~ chain composes ~Mana~ + ~Action::PayLife~ via factory
+composition in the bridge — depth 2.
+
+Next census round due after Phase 2 (fetch lands).
+
+*** 2026-06-03 — Catch-up snapshot (mana fold-in → replacements → Search → cost-IR complete)
+
+Census lapsed ~6 weeks; the 2026-04-25 entry was the last. Rather than narrate
+each batch, this entry re-snapshots the *live* vocabulary (source of truth = the
+enums) and records the standing breadth gaps.
+
+**Corrections to prior entries.** ~AbilityKind::Mana~ + ~ProducesSpec~ (deleted).
+Mana production is now ~Action::AddMana { who, count, spec: ManaSpec::Fixed(Vec<Color>)
+| AnyOneColor }~ inside an ordinary ~AbilityKind::Activated~ body; CR 605.1a
+stack-bypass is detected *structurally* via ~is_mana_ability~ (target_spec == None
+&& body produces mana), not a variant. This reverses the 2026-04-25 "Mana is the
+honest split" conclusion — the structural detector removed the need for the variant.
+
+**Live vocabulary.**
+- ~Action~ (43, incl. ~Noop~): Move · Search · Return · Discard · Mill · Shuffle · Counter ·
+  OfferCast · CopySpell · Draw · DealDamage · PayLife · GainLife · PutCounters ·
+  RemoveCounters · Tap · Untap · Transform · Attach · Destroy · Exile · Sacrifice · MoveByChoice · ApplyCE ·
+  Sequence · IfThen · MayDo · ForEach · Choose · ScheduleDelayedTrigger ·
+  GrantCEToNextSpellCast · Scry · Surveil · Reveal · Look · CreateToken · AddMana ·
+  PayMana · PayManaX · LoyaltyAdjust · Replicate · PutOnLibrary.
+- ~AbilityKind~ (6): Triggered · Replacement · Prohibition · Static · Activated ·
+  OnResolve — the complete reactive/static/activated/resolution taxonomy.
+- ~Expr~ (~72): full object/player/combat/set/arithmetic/binding read surface
+  (incl. ~IsAbility~ / ~AbilityIsTriggered~ — the stack-object kind axes).
+- ~CEMod~ (~30): CR 613 layer coverage (types/colors/PT/keywords/subtypes,
+  grant/copy abilities, cost mods, cast permissions, protection, step skips).
+
+**Folded in since Phase 1.**
+- *Replacements:* ~EventMod~ / ~ReplacementBody::ModifyEvent~ deleted;
+  ~ReplacementBody::Replace(Action)~ (+ ~Prevent~) is the only structural variant.
+  Body reads the matched event via ~Ctx::Var("triggered_obj")~. Added universal
+  ~Action::Tap~ / ~Untap~.
+- *Fetch lands:* ~Action::Search~ (library → zone, strategy picks).
+- *Cost sub-language fully on IR* (plan ~inherited-kindling-neumann.md~). New:
+  ~Action::PayManaX { generic: Expr }~ — variable-X *generic* mana, the mirror of
+  ~PayLife { amount: Expr }~. ~Action::Choose~ gained ~bind_as~ + ~DecisionKind::Branch.branches~
+  so a cost-tree branch can carry its own object decision (Bitter Triumph). ~CostComponent~,
+  ~pay_costs~/~can_pay_costs~ and the legacy-cost shims deleted; ~CardDef.additional_costs~
+  is now ~CostBody~.
+
+**Reuse / health.** No single-use structural variants spotted in the cost layer.
+~MoveByChoice~ (with the ~MoveVerb~ tag) *absorbed* the Sacrifice/Discard/Return/
+Exile-from-zone cost shapes — a merge, not proliferation. ~Choose~ now serves both
+effect resolution (~resolve_choice~ callback) and cost context (~bind_as~ + BindEnv) —
+one primitive, two drivers.
+
+**Breadth gaps — the standing "cannot yet express" list.**
+*None.* All structural gaps are closed (see RESOLVED notes below). Remaining work is
+per-card depth (the ~28 ~eff_*~ spell bodies) and optional representational tightening
+(the ~bf~/~spell~/~ability~ optionals → a ~role~ enum; see "object model" note).
+/(Correction 2026-06-20: this "None" was a *type-level* claim. The ~CEMod~ vocabulary//
+//exists, but only ~5 of ~30 variants are actually translated into running continuous//
+//effects — the CE-translation breadth gap is real and still open. See 2026-06-20 entry.)/
+
+*RESOLVED 2026-06-04 — Split stack (object-model unification).* Abilities on the stack
+are now card-less ~GameObject~ s in ~state.objects~ (zone=Stack, ~ability=Some~), not a
+separate ~state.abilities~ map. ~ObjectInZone { zone: Stack }~ reaches every stack object,
+so ~TargetSpec::AbilityOnStack~ + ~AbilityType~ are deleted: "counter spell" = ~ir_spell()~
+(on-stack ∧ not-ability), "counter ability" = ~ir_ability()~, "spell or ability" = one
+~ir_or~. New ~Expr::IsAbility~ / ~AbilityIsTriggered~ project the stack-object kind. A
+resolved/countered ability ceases to exist by removal (CR 608.2m), *not* a zone SBA — the
+704.5 "ceases to exist" SBAs cover only tokens (704.5d) and copies (704.5e). The universal
+Object:Zone model (tokens already proved it — 704.5d) now covers abilities too.
+
+*RESOLVED 2026-06-04 — Shuffle.* ~Action::Shuffle { who }~ added: a zero-agency effect
+(randomisation is not a choice). "You may shuffle" decomposes to ~MayDo { Shuffle }~ —
+the ~eff_maybe_shuffle~ closure (which baked the may-decision into an evaluator threshold)
+is deleted; Ponder now composes ~MayDo { Shuffle }~ via the ~eff_ir~ bridge. The
+~Search.shuffle~ flag remains as a fetch-path convenience. *Every effect verb now has an
+IR home.*
+
+*RESOLVED 2026-06-04 — Transform / DFC.* ~Action::Transform { target }~ = in-place face
+flip (CR 712.4); sets the new face's printed loyalty if it's a planeswalker; fires the new
+~GameEvent::Transformed~ so triggers can react. Delver uses it directly. *Tamiyo is modeled
+honestly as a new object* — "exile, then return transformed" = ~Sequence([Exile, Move→bf,
+Transform])~, which re-enters a fresh, summoning-sick permanent (tests assert in-place
+preserves bf state vs. exile-return resets it). ~do_flip_tamiyo~ and both ad-hoc
+~bf.active_face = 1~ writes are deleted.
+
+*RESOLVED 2026-06-04 — Attachment.* ~Action::Attach { what, to }~ sets ~attached_to~ and
+fires the new ~GameEvent::BecameAttached~ (so "whenever ~ becomes equipped/enchanted"
+triggers are expressible). The read side was already generic (CEMods filter on
+~bf.attached_to~). All 8 hand-rolled ~bf.attached_to = Some(_)~ writes across the 5
+equipment cards (equip ability, Living Weapon, ETB-attach) now route through it via the
+~do_attach~ closure bridge. Detachment needs no action — ~change_zone~ clears ~attached_to~
+on LTB (CR 704.5q). Reconfigure/move-equipment not yet needed.
+
+**Not a breadth gap.** ~28 instant/sorcery bodies still on legacy ~eff_*~ closures
+(the ~SpellFactory~ path) — mechanical translation, every verb has an IR home.
+(*Count superseded — see 2026-06-19 below: down to 2.*)
+~IrSpellMode~ (~17 cards) proves spell bodies can be IR. New: ~eff_ir(who, action)~
+bridges a self-contained IR ~Action~ into a still-closure body — the migration adapter.
+
+Next: no structural gaps remain. Per-card ~eff_*~ → ~IrSpellMode~ translation continues
+opportunistically. Census review due every 20 cards / on any new structural variant.
+
+*** 2026-06-19 — Spell-body migration: 8 cards ported, 1 remains
+
+The 2026-06-03 "~28 still on legacy" figure was stale long before this entry —
+the live split was 30 IR / 9 legacy when this round opened. Ported the 7
+mechanically-expressible legacy spell bodies plus Toxic Deluge (which needed a
+small ~ApplyCE~ engine extension — see the 2026-06-20 entry), leaving **1**
+(*Show and Tell*) on the ~SpellFactory~ path. Live split now:
+*38 ~IrSpellMode~ cards / 1 legacy*.
+
+Ported this round (all reuse existing primitives — no new variants):
+- Consign to Memory → ~Counter~. Force of Negation → ~Sequence([Counter, Exile])~
+  (this engine deliberately exiles the countered spell; the old scoped-replacement
+  ~eff_counter_and_exile~ is deleted — Counter-to-graveyard then Exile-from-graveyard
+  reaches the same end state, and the FoN tests now drive the card's IR body).
+- Sheoldred's Edict → 3× ~Action::Sacrifice { who: Opponent }~ (modal OnResolve).
+- Thoughtseize → ~Sequence([Reveal opp hand, Discard 1 nonland, PayLife 2])~. The
+  reveal enumerates the opponent's hand as ~AllObjects{ Global(Hand), Owner(it) ≠ Controller }~.
+- Brazen Borrower / Petty Theft → ~Return { to: Hand }~.
+- Prismatic Ending → ~IfThen(Mv(target) ≤ X+1, Exile)~ — converge read as ~Ctx::Var("x")~ + 1.
+- Surgical Extraction → ~Sequence~ of three ~ForEach~ sweeps over
+  ~AllObjects{ Scoped(zone, Owner(target)), Name(it) = Name(target) }~ → ~Exile~,
+  one per {Graveyard, Hand, Library}. The same-name multi-zone sweep needed no new
+  primitive: ~Expr::Name~ + ~values_eq(Name, Name)~ already exist.
+
+Deleted: ~eff_counter_and_exile~ (zero refs). Demoted to ~#[allow(dead_code)]~
+test-only/parity scaffolding (no card uses them; their parity + unit tests still do,
+matching the existing ~eff_destroy_target~/~eff_damage_target~ convention):
+~eff_counter_target~, ~eff_reveal_hand~, ~eff_discard~, ~eff_life_loss~, ~Effect::then~,
+~SpellModes::modal~/~is_modal~ (no modal card uses the ~SpellFactory~ path anymore).
+
+*Toxic Deluge* (-X/-X to all creatures, EOT) was ported the next day via a small
+~ApplyCE~ extension — see 2026-06-20 below.
+
+The 1 remaining (*Show and Tell* — each player may put a permanent from hand onto
+the battlefield, simultaneously) is NOT mechanical: no primitive expresses
+per-player iteration (~ForEach~ over players is ~Unimplemented~), an effect-context
+"choose a card from your hand" (~MoveByChoice~ only reads a *pre-bound* cost-tree
+answer), or the simultaneity. Needs a justified new structural primitive
+(player-scoped optional reveal-and-place), not a translation.
+
+Next: Show and Tell is its own design task. Once it lands, the entire
+~SpellFactory~ path (~SpellMode~/~SpellModes~/~single_mode~/~untargeted_mode~/~then~)
+can be deleted wholesale.
+
+*** 2026-06-20 — ApplyCE generalized; the CEMod-translation gap surfaced
+
+Porting Toxic Deluge forced a look at the IR continuous-effect path, and it is
+much thinner than the ~CEMod~ enum's surface suggests. *The data model advertises
+full CR-613 coverage (~30 ~CEMod~ variants — P/T, types, colors, keywords,
+subtypes, grant/copy abilities, cost mods, cast permissions, protection, step
+skips); the executor honors only a handful, and every real continuous effect on a
+card is still a hand-rolled closure.*
+
+The concrete state at the start of this entry:
+- *35* raw ~ContinuousInstance~ closure constructions across the crate, spanning
+  *all five* layers — 13× L7, 11× L6, 4× L3, 3× L4, 1× L5. (So "we only have L3
+  CEs" is false — the L3 hardcode was a quirk of the *one* ~ApplyCE~ executor arm,
+  not the CE system.)
+- *Two* separate, both-incomplete ~CEMod~→effect translators:
+  - ~cemod_to_ci~ (the ~AbilityKind::Static~ path) implemented *2* of ~30
+    (~SetBasicLandType~, ~AddBasicLandType~ — Urborg / Yavimaya); ~_ => None~ for
+    the rest.
+  - ~apply_cemod_to_spell_def~ (the ~Action::ApplyCE~ path) implemented *3* of ~30
+    (~Uncounterable~, ~CastableFrom~, ~AltCost~); ~_ => {}~ for the rest.
+  - The other ~25 ~CEMod~ variants are *defined and dependency-tracked* (~writes_of~
+    maps them to read/write axes) but have *no executor path that builds a
+    ContinuousInstance* — they are inert.
+- *2* cards use the IR static path; *1* card used the IR ~ApplyCE~ path (Dauthi).
+  Everything else — Blood Moon, Null Rod, Omniscience, Painter's Servant, the
+  equipment pumps, Tamiyo +2, Toxic Deluge — is a bespoke closure.
+
+So the 2026-06-03 "Breadth gaps: *None*" line was true only at the *type* level:
+the ~CEMod~ vocabulary exists, but the translation from it to running CEs is ~5/30
+across two stubs. *This is the standing CE breadth gap and it should not be
+recorded as closed.*
+
+*Done this entry (the minimal honest fix, scoped to Toxic Deluge):* ~Action::ApplyCE~
+generalized — (a) target may now be a set (~obj_ids_of~), registering ONE CI with a
+locked-membership filter (CR 611.2c) rather than only a single object; (b) layer is
+derived from the mods' ~writes~ via ~layer_for_writes~ (P/T→L7, types→L4, colors→L5,
+abilities→L6, default L3) instead of the L3 hardcode; (c) ~CEMod::PumpPT~ is honored
+— its ~Expr~ deltas are evaluated in the ApplyCE arm (where the env still holds the
+announced X) and baked into the modifier, since the recompute-time modifier hook is
+env-less. Toxic Deluge is now ~ApplyCE { target: AllObjects(creatures), mods:
+[PumpPT(-X,-X)], EndOfTurn }~. Dauthi's single-object L3 free-cast path is preserved
+(empty writes → L3 default; verified by ~test_dv_activated_grants_castable_from_exile_via_ir~).
+
+*Follow-up (now planned + started):* the full CE migration has a plan at
+~~/org/projects/libmtg-ir-ce-migration.org~ (also covers the broader closure
+census — activated abilities, triggers, replacements, prohibitions — toward FULL
+retirement of the closure "effect" model).
+
+*** 2026-06-20 (later) — Phase 0: CEMod translators unified
+The two forked translators are now one. ~cemod_to_modifier(cemod, env, state) ->
+Option<CeBuild>~ (CeBuild = {layer, reads, writes, modifier}) is the single source
+of truth for the CEMod-intrinsic half of a continuous instance; callers add the
+extrinsic half (filter/expiry/timestamp). ~cemod_to_ci~ (the ~AbilityKind::Static~
+path — ~state~ now threaded through ~ir_static_to_cis~) and the ~Action::ApplyCE~
+arm both route through it; ApplyCE now emits *one CI per mod* (each at its own
+layer) instead of one merged CI. Implemented arms unchanged in behavior:
+~SetBasicLandType~/~AddBasicLandType~ (L4), ~PumpPT~ (L7, Expr deltas), ~Uncounterable~
+/~CastableFrom~/~AltCost~ (L3). The ~_ => None~ arm is the remaining ~25-CEMod gap;
+each future card adds one arm here and *both* CE paths gain it. 439 tests green,
+zero behavior change.
+
+*** 2026-06-20 (later) — Phase 1: equipment P/T + keyword CEs on IR
+Added ~CEMod::AddKeyword~ (L6) to ~cemod_to_modifier~ and ~Expr::AttachedTo(obj)~
+(→ the object an Equipment/Aura is attached to, or ~Unit~), so an equipment's CE
+scopes to its equipped creature as pure data: ~Eq(It, AttachedTo(Source))~ (helper
+~equipped_creature_ce~). Ported 6 cards off hand-rolled ~ContinuousInstance~ closures
+— cori_steel_cutter, batterskull, meteor_sword, pre_war_formalwear, cryptic_coat
+(static, via ~AbilityKind::Static~), and monk_token (prowess, via ~ApplyCE~ through the
+~eff_ir_targeted~ bridge). ~ContinuousInstance~ closures in card_defs.rs: 21 → 12.
+Remaining CE-closure cards: painters_servant, hexing_squelcher, dragons_rage_channeler
+(Phase 2); null_rod, karn, lavinia, grafdiggers_cage, disruptor_flute (Phase 3);
+kaito_animation_ce, omniscience (Phase 4); sneak_attack (Part 3, activated ability).
+439 tests green.
+
+*** 2026-06-20 (later) — Phase 2: conditional-CE gate (delirium)
+Added ~condition: Option<Expr>~ to ~AbilityKind::Static~ — a first-class block gate
+(CR 613 "as long as …"), re-evaluated each recompute in ~ir_static_to_cis~; false ⇒
+the block emits no CIs. (Decision: a block gate, *not* a per-object filter — separates
+"is the effect active?" from "which objects does it touch?".) Ported
+dragons_rage_channeler: ~condition: delirium~ (~Ge(Count(Types(AllObjects{GY})), 4)~),
+~scope: It==Source~, ~mods: [PumpPT(+2,+2), AddKeyword(Flying)]~ — replacing two CIs
+that each re-checked delirium inside their modifier; deleted the dead
+~gy_card_type_count~ helper. CE-closure count in card_defs.rs: 12 → 10. 439 green.
+Regrouped (need new capability): painters_servant (~AddColor~ keyed on the ETB-chosen
+color), hexing_squelcher (~GrantAbility~ of a Ward trigger).
+
+*** 2026-06-20 (later) — Phase 3 begins: the prohibition pipeline
+*Design decision: the event pipeline rules.* All "can't" (CR 101.2 — "can't beats
+can") is one generic mechanism, NOT a CEMod and NOT a ~castable/activatable~ flag:
+the action fires an event and the pipeline runs *prohibit? → replace? → fire →
+triggers*. Prohibitions are ~AbilityKind::Prohibition { matches: EventPattern }~,
+consulted in ~fire_event~ Stage 1. (The engine was designed for this — ~SpellBeingCast~
+carries ~mana_value~/~is_noncreature~ for Lavinia's prohibition but was never fired;
+~AbilityKind::Prohibition~ was declared with no executor path; Lavinia's comment admits
+the CE-flag was a "Stage 3 not wired" shortcut.) Step 1 done: wired the IR-prohibition
+consultation into Stage 1; added ~EventPattern::SpellBeingCountered~; ported emrakul +
+long_goodbye "can't be countered" off ~ProhibitionDef~ closures (Long Goodbye, having no
+~counterable~ flag, proves the path). 439 green. Next: fire ~SpellBeingCast~
+(can't-cast: lavinia, grafdiggers_cage) and add ~AbilityBeingActivated~ (can't-activate:
+null_rod, karn); then retire the ~castable/activatable~ CE flags + ~ProhibitionDef~.
+
+*** 2026-06-20 (later) — Prohibitions split into two CR categories; strategy contract
+*Refines the entry above (do NOT fire SpellBeingCast/AbilityBeingActivated as veto
+events).* "Can't" has *two* rules-level categories, enforced at different points:
+- *Occurrence-prohibition* (CR 701.5f/701.7c — can't be countered/destroyed/ETB): the
+  game attempts an occurrence and it is suppressed → the *event pipeline*
+  (~AbilityKind::Prohibition { matches: EventPattern }~, ~fire_event~ Stage 1). This is 3a.
+- *Action-restriction* (CR 601/602.5/508–509 — can't cast/activate/attack/block/target):
+  a *player choice* made illegal, like a basic timing rule → *legal-option production*
+  (~enumerate_playable~ already skips ~!castable~/~!activatable~). This is 3b. Casting/
+  activating are NOT occurrences to veto mid-pipeline, so SpellBeingCast/AbilityActivated
+  are *not* fired as vetoes.
+The strategy↔engine contract this rests on (engine owns legality, strategy owns
+preference; one ~is_legal~ core surfaced as curated-list vs propose-then-validate) is
+now documented with a full 22-method census in [[file:STRATEGY.org][STRATEGY.org]].
+Next (3b): route Lavinia/Null Rod/Karn through an ~AbilityKind::Restriction { action,
+subject }~ (CR's word for can't-do, 508.1d/509.1c) consulted by ~enumerate_playable~,
+retiring their ~castable/activatable~ CE flag-flips.
+
+*** 2026-06-20 (later) — Phase 3b done: action-Restrictions (can't cast / can't activate)
+Added ~AbilityKind::Restriction { action: ActionKind, subject: Filter }~ + ~ActionKind::
+{Cast, Activate}~ + ~action_restricted(state, kind, subject_id)~ (the action analogue of
+the ~fire_event~ ~Prohibition~ walk; source-keyed). Consulted at *legal-option production*
+as an AND-NOT gate over *permission* — so "can't beats can" (CR 101.2) is
+order-independent and the ~castable~/~activatable~ flags stay as pure *permission* caches
+(Dauthi grant, Flashback) rather than conflating grant+deny (the prior last-writer-wins
+bug). *Cast* gate at all 3 cast-production sites (hand, adventure-exile, granted-exile) —
+zone lives in the *subject*, so a Dauthi exile-cast under Grafdigger's (GY/library)
+correctly doesn't conflict, while under Lavinia (zone-agnostic) it's restricted. *Activate*
+gate (uniform, not a recompute flag-set: unconditionally correct for granted abilities) at
+~ability_available~ + ~enumerate_mana_abilities~ + ~auto_tap_plan~. Ported lavinia/null_rod/
+karn off their ~castable/activatable~ CE closures; removed dead ~mana_abilities_mut~.
+CE-closure count 10 → 7. Full contract in [[file:STRATEGY.org][STRATEGY.org]]. 439 green.
+
+*** 2026-06-20 (later) — Grafdigger's Cage: both 3a and 3b on one card
+First card exercising the occurrence-prohibition (3a) *and* action-restriction (3b)
+mechanisms together. "Creatures can't ETB from GY/library" → ~Prohibition~ over
+~EventPattern::Or([ZoneChange GY→BF, ZoneChange Library→BF], creature)~; "players can't
+cast from GY/library" → ~Restriction{Cast, subject: ZoneOf(It) ∈ {GY,library}}~. Two new
+IR primitives: ~EventPattern::Or~ (dual of ~And~; first match's bindings win) and
+~Prohibition.active_zone: Option<ZoneKindSel>~ — gates a *static-permanent* prohibition's
+source by zone (~Some(Battlefield)~: Cage stops prohibiting off the battlefield), ~None~ for
+self-scoping ~It==Source~ patterns (Emrakul/Long Goodbye can't-be-countered, where a Stack
+gate is both redundant *and* wrong for callers that fake a stack spell without a
+~StackSpell~ role — that broke ~test_long_goodbye~ until it became ~None~). Retired Cage's
+~ProhibitionDef~ closure + ~castable=false~ CE. The two old CE tests had gone vacuous
+(zone-default ~castable=false~; a CI that no longer exists) → rewrote to assert
+~action_restricted(Cast)~ directly. CE-closure count 7 → 6. 439 green.
+
+*** 2026-06-20 (later) — Disruptor Flute: runtime-chosen-name CE + mana exemption
+Ported the last per-name "name a card" CE off closures. Oracle (verified): "spells with
+the chosen name cost {3} more; activated abilities of sources with the chosen name can't be
+activated *unless they're mana abilities*". Three primitives:
+- ~Expr::ChosenName(obj)~ — reads ~bf.etb_choice~ as a ~Name~ (battlefield-state
+  projection, no CE axis). Lets a CE scope by *runtime-chosen data*: ~Eq(Name(It),
+  ChosenName(Source))~. The ETB closure now *only* stores the choice; no CE pushed.
+- ~CEMod::CastingCostPlus(Expr)~ wired into ~cemod_to_modifier~ (writes
+  ~casting_cost_modifier += N~); "which cards" lives in the ~Static~ scope, not the mod.
+- CR "unless they're mana abilities" — expressed as a *subject filter clause*, not a flag.
+  The restriction consultation binds ~activating_mana_ability~ (Bool) into the subject's
+  eval env, the same way triggers bind ~triggered_obj~/~triggered_mana_spent~; Flute's
+  subject is then ~Name(It)==ChosenName(Source) ∧ Not(Ctx::Var("activating_mana_ability"))~,
+  while Null Rod / Karn (no such clause) still bite mana abilities. The bool's *value* is
+  CR 605.1a, already derived by ~is_mana_ability~ (no target ∧ could-add-mana) at synthesis —
+  exactly what splits an ability into ~mana_abilities()~ vs ~abilities()~ — so the call site's
+  category picks one of two intent-named entry points: ~action_restricted(kind, subj)~ (casts
+  / non-mana activations, binds false) and ~mana_ability_restricted(subj)~ (mana sub-loop,
+  binds true). No mana-ness tag is stored on the variant or threaded as an argument.
+Removed now-dead ~abilities_mut~. CE-closure count 6 → 5 (remaining: omniscience,
+sneak_attack, kaito, hexing_squelcher, painters_servant). 439 green.
+
+*** 2026-06-21 — Painter's Servant: runtime-chosen *color* (reuses the Flute machinery)
+The chosen-name → chosen-color analog of Flute, with no restriction — just an L5 color CE.
+- ~Expr::ChosenColor(obj)~ — reads ~bf.etb_choice~ as a ~Color~ (sibling of ~ChosenName~).
+- ~CEMod::AddColor~ now takes an ~Expr~ (was a literal ~Color~) and is wired into
+  ~cemod_to_modifier~: the color is evaluated once against the source's frame and baked into
+  the L5 modifier (Unit → no CI, so nothing is added). A fixed grant uses ~AddColor(ColorLit
+  c)~; Painter uses ~AddColor(ChosenColor(Source))~.
+- Card: ETB closure stores the color only; the effect is ~Static{ AddColor(ChosenColor(
+  Source)) }~ with ~scope: None~ (every object, all zones — the FoW-pitch / hand-card test
+  confirms it reaches non-battlefield cards). The three colors-outcome tests pass unchanged
+  (they assert materialized ~colors~, not the mechanism). CE-closure count 5 → 4 (remaining:
+  omniscience, sneak_attack, kaito, hexing_squelcher). 439 green.
+
+*** 2026-06-21 — Omniscience: alt-cost CE off closures (the representative AltCost card)
+"You may cast spells from your hand without paying their mana costs." No new primitive —
+~CEMod::AltCost(CostSpec::Free)~ was already translated by ~cemod_to_modifier~ (pushes an
+empty ~AlternateCost~); this just moves Omniscience onto it as ~Static{ AltCost(Free) }~ with
+scope ~Controller(It) == Ctx::Controller ∧ Not(land)~. Scope is controller-keyed but
+*zone-agnostic on purpose*: a spell moves hand→stack at CR 601.2a, before its cost is paid,
+so a hand-only scope would drop the alt cost mid-cast (only hand casts consume it anyway).
+Now the model path for the family of alt-cost grants. The three alt-cost-outcome tests pass
+unchanged. CE-closure count 4 → 3 (remaining: sneak_attack, kaito, hexing_squelcher). 439 green.
+
+*** 2026-06-21 — Sneak Attack: first IR Activated with a choice_spec (three sub-effects)
+"{R}: put a creature from hand onto the battlefield with haste; sacrifice it at the next end
+step." No new primitive — composes existing ones into one ~AbilityKind::Activated~ (the first
+with a ~choice_spec~), retiring its ~ability_factory~ closure *and* its haste CE closure:
+- choice (CR 701.10) → ~choice_spec{ Hand, creature }~; the picked card binds as
+  ~Ctx::Var("target")~ via ~build_ability_effect~ (verified end-to-end).
+- body = ~Sequence[ Move(target → Battlefield), ApplyCE(target, AddKeyword(Haste), EndOfTurn),
+  ScheduleDelayedTrigger(AtStep End, Sacrifice(It == target)) ]~.
+- ~Move~ routes through ~change_zone~ (full ETB pipeline). Haste is ~EndOfTurn~ (ApplyCE sources
+  the CI on Sneak Attack, not the creature; effect-correct since the creature is sacced this
+  turn). The delayed sac captures ~target~ at schedule time (Phelia's pattern) and matches
+  nothing if the creature already left. Two activated-ability tests + the delayed-sac test pass
+  unchanged. CE-closure count 3 → 2 (remaining: kaito, hexing_squelcher). 439 green.
+
+*** 2026-06-21 — IR Ward + IR CE-ability-granting; Hexing Squelcher fully on IR
+The one card that needed real new capability rather than a swap — Ward isn't an engine
+keyword, so two reusable subsystems were built first (committed standalone, then the card):
+- *IR Ward*: ~Expr::ChosenTargets(spell)~ (the spell's targets, so a trigger can ask
+  "targets me?" via ~Contains(Source, ChosenTargets(triggered_obj))~) + ~Action::Ward{cost}~
+  (bridges to ~ward_pay_or_counter~, reading triggered_obj/triggered_actor from the trigger
+  env) + ~ir_ward(cost)~ (a self-scoping Triggered ability — works printed *or* granted).
+- *IR CE-ability-granting*: ~CardDef.granted_abilities: Vec<Ability>~ (declarative analog of
+  ~granted_trigger_defs~), ~CEMod::GrantAbility~ wired into ~cemod_to_modifier~ (L6), and a
+  ~fire_triggers~ Part 5 over materialized defs. The per-ability firing was extracted into
+  ~fire_ir_triggered~, shared by Part 4 (printed) and Part 5 (granted).
+Hexing Squelcher then becomes four IR abilities, all closures retired: self-ward (~ir_ward~),
+"this spell can't be countered" (~cant_be_countered_self~), "spells you control can't be
+countered" (~Prohibition~ on ~SpellBeingCountered~, ~Controller(It)==Controller~, active_zone
+BF), and "other creatures you control have ward" (~Static{GrantAbility(ir_ward)}~). The two
+ward-grant tests now use a vanilla other-creature so the granted ward is unambiguous; the
+"enters later" test asserts ~granted_abilities~ (was ~granted_trigger_defs~). CE-closure count
+2 → 1 (remaining: kaito). 442 green.
+
+*** 2026-06-21 — Kaito's animation: the last CE closure → IR. *Migration complete (0 left).*
+"During your turn, as long as Kaito has one or more loyalty counters on him, he's a 3/4 Ninja
+creature and has hexproof." The hardest CE: a *conditional planeswalker→creature type change*.
+Checked the CR ruling first (it corrected our assumption): the "he's a … creature" wording
+makes him *stop being a planeswalker* while animated (older templating; not "also a creature"),
+though loyalty abilities stay usable and combat damage doesn't shed loyalty. Three new primitives:
+- ~Expr::ActivePlayer~ (CR 102.1) — ~Eq(ActivePlayer, Ctx::Controller)~ is "during your turn".
+- ~Expr::LoyaltyOf(obj)~ — reads ~bf.loyalty~ for the ">0" gate.
+- ~CEMod::BecomeCreature{ power, toughness, subtypes, keywords }~ (L4) — the animate primitive:
+  set base P/T + creature subtypes + keywords, carry existing abilities over, drop the
+  planeswalker type. Reusable for any "becomes a creature" effect (man-lands, other PWs).
+Kaito's animation becomes ~Static{ BecomeCreature(3/4 Ninja, Hexproof), scope: It==Source,
+  condition: your-turn ∧ loyalty>0 }~. First test added for the animation (none existed):
+animates only on your turn with loyalty, reverts off-turn or at 0 loyalty. 443 green.
+
+*This retires the last continuous-effect closure in ~card_defs.rs~ (count 1 → 0). The IR/closure
+CE migration that began at ~23~ is complete: every card's continuous effects are declarative IR
+(~AbilityKind::Static/Triggered/Prohibition/Restriction/Activated~) over ~cemod_to_modifier~.*
+
+* Known seams
+
+*Split stack — RESOLVED 2026-06-04.* Abilities on the stack are now card-less
+~GameObject~ s in ~state.objects~ (zone=Stack, ~ability: Some(AbilityState)~); the separate
+~state.abilities~ map and ~StackAbility~ are deleted. ~ObjectInZone { zone: Stack }~ reaches
+every stack object, so the one ~Filter~ language covers it: ~ir_spell()~ (on-stack ∧
+not-ability), ~ir_ability()~, ~ir_triggered_ability()~. ~TargetSpec::AbilityOnStack~ +
+~AbilityType~ are gone; "counter spell or ability" is a single ~ir_or~ filter, no ~Union~.
+
+Object-model note: ~GameObject~ now carries three per-zone payload optionals
+(~bf~/~spell~/~ability~). The remaining (optional, behavior-free) tightening is to collapse
+them into one ~role: ObjectRole~ enum so illegal states are unrepresentable — deferred
+pending a thoughtful trait/interface design.

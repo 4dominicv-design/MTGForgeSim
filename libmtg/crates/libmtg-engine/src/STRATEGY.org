@@ -1,0 +1,180 @@
+#+TITLE: libmtg-engine — The Strategy ↔ Engine Contract
+#+STARTUP: content
+#+OPTIONS: toc:2 num:nil
+#+DATE: 2026-06-20
+
+How the engine asks the ~Strategy~ for decisions, and who is responsible for
+*legality* vs *preference*. This is the contract every ~Strategy~ implementation
+relies on and every engine decision point must honour. For card behaviour see
+[[file:CARD_INDEX.org][CARD_INDEX.org]]; for the IR see [[file:DESIGN.org][DESIGN.org]].
+
+* The invariant
+
+*The engine owns legality. The strategy owns preference.*
+
+- A ~Strategy~ method is only ever asked to express a *preference among options the
+  rules already permit*. It must never be required to *determine* legality (timing,
+  "can't" effects, payable costs, available targets) — that is the engine's job and
+  the rules' single source of truth.
+- Two failure modes the contract exists to prevent:
+  1. *Strategy re-implements legality* → it drifts from the CR; every strategy must
+     re-derive the same rules; bugs multiply.
+  2. *Engine trusts an unvalidated proposal* → an illegal choice produces an illegal
+     game state.
+- Corollary: a strategy *may* call engine-provided helpers to propose well
+  (~legal_targets~, ~enumerate_playable~, the cost ~CostSchema~), but that is the
+  strategy *consulting* engine legality, not *owning* it.
+
+* Two surfacing modes (chosen by action-space size, not by taste)
+
+Legality is the same core; it is *surfaced* two ways depending on how large the
+space of choices is:
+
+1. *Curated list.* The engine enumerates the legal options and hands them over; the
+   strategy picks/orders/partitions. Used where the space is small and enumerable.
+   Illegal choices are *unrepresentable* — the strategy cannot name one.
+2. *Propose-then-validate.* Where the space is combinatorially large (attacker/
+   blocker *subsets*, target *combinations*, X, cost-payment choices), the engine
+   cannot pre-enumerate the product. The strategy *proposes* — ideally using engine
+   helpers to propose well — and the engine *validates* the proposal against the same
+   legality core, rejecting / yielding / rewinding on illegality. This is the CR's own
+   casting model (CR 601.2 announce → check legality → 728 reverse if illegal).
+
+Both modes consult one legality core. Neither asks the strategy to *derive* legality.
+
+* The strategy choice universe (census 2026-06-20)
+
+Every method of ~trait Strategy~, classified by surfacing mode and who guarantees
+legality. (Source of truth: ~strategy.rs~. "Sanitized" = engine post-filters the
+return: dedups, keeps only offered ids, truncates to count.)
+
+** A. Engine-curated — a legal set is passed in; strategy picks/orders/partitions
+| Method                | Curated input        | Returns        | Legality guard            |
+|-----------------------+----------------------+----------------+---------------------------|
+| ~choose_action~       | ~legal: &[LegalAction]~ | one action  | from the list (priority surface) |
+| ~choose_for_effect~   | ~choices: &[ObjId]~  | one (opt)      | call sites ~.contains~ the return |
+| ~choose_mana_ability~ | ~available: &[…]~    | one (opt)      | default ~.find~ in available |
+| ~sacrifice_choice~    | ~candidates: &[ObjId]~ | one (opt)    | candidates pre-filtered by the rule |
+| ~order_blockers~      | ~blockers: &[ObjId]~ | permutation    | any order legal           |
+| ~order_top_library~   | ~cards: &[ObjId]~    | permutation    | sanitized (looked-at only) |
+| ~scry~                | ~top: &[ObjId]~      | (keep, bottom) | sanitized (dedup, looked-at) |
+| ~put_on_library~      | ~candidates: &[ObjId]~ | choose-K     | sanitized (hand ids, truncated) |
+
+** B. Bounded / always-legal typed choice — the space is inherently safe
+| Method            | Shape                                              |
+|-------------------+----------------------------------------------------|
+| ~announce~        | mode / alt-cost index / X — bounded by ~AnnounceOptions~ |
+| ~resolve_choice~  | color / creature-type / card-name / yes-no / may-X (~ChoiceRequest~) |
+| ~surveil_choice~  | keep vs bin one card                               |
+| ~take_mulligan~   | yes / no                                           |
+
+** C. Propose-then-validate — candidates curated per-slot; strategy assembles; engine validates at execution
+| Method                       | What it assembles                  | Engine validation               |
+|------------------------------+------------------------------------+---------------------------------|
+| ~choose_targets~             | a target combination from per-slot ~legal: &[ObjId]~ | count / distinctness at use |
+| ~propose_announcement~       | a ~BindEnv~ answering a whole ~CostSchema~ (modes+targets+X+cost bindings) | cost driver *yields* if a bound choice is unpayable |
+| ~propose_resolution_payment~ | same, resolution-time              | same                            |
+
+** D. Propose-UNVALIDATED from raw state — *the standing gap*
+| Method              | Issue                                                                        |
+|---------------------+------------------------------------------------------------------------------|
+| ~declare_attackers~ | raw ~state~ in, raw ~(atk, target)~ out; *no legality gate*; ~CantAttack~ never consulted |
+| ~declare_blockers~  | same; ~CantBlock~ never consulted                                            |
+| ~london_bottom~     | raw-state, but any N cards is always legal → harmless                        |
+
+*This D row is the only place the invariant is not yet honoured.* It is also exactly
+where the category-2 combat prohibitions (~CantAttack~/~CantBlock~/~CantBeTargeted~)
+are inert. Closing it = giving declarations a ~validate_declaration~ pass against the
+legality core (low priority in a goldfish sim where combat is trivial).
+
+** Not decision points (the strategy's preference/eval surface the engine reads)
+~player_id~, ~plan_gap~, ~card_fills~, ~drain_decisions~ — these expose the strategy's
+own valuation; they make no game choice.
+
+* Legality = basic rules + the two "can't" categories
+
+What the engine's legality core must encode:
+1. *Basic permission/timing* (CR 116 / 307 / 601 / 602) — sorcery-speed, priority,
+   empty stack, you-control, costs payable, a legal target exists.
+2. *Occurrence-prohibition* (CR 701.5f / 701.7c / 615) — "can't be countered/
+   destroyed/…": the game *attempts* an occurrence and it is *suppressed*. Enforced in
+   the *event pipeline* (~fire_event~ Stage 1) via ~AbilityKind::Prohibition { matches:
+   EventPattern }~. (Done for can't-be-countered.) *Not a strategy concern* — these
+   never reach a strategy decision; they intercept game-driven events.
+3. *Action-restriction* (CR 601 / 602.5 / 508–509 / 115) — "can't cast/activate/
+   attack/block/target": a *player choice* made *illegal*, exactly like a basic timing
+   rule. CR's own word is *restriction* (508.1d / 509.1c pair "requirements" =
+   must-do with "restrictions" = can't-do). Modeled as ~AbilityKind::Restriction
+   { action: ActionKind, subject: Filter }~ — distinct from the event-side
+   ~Prohibition~. Enforced where legal options are produced — the *curated list*
+   (mode A: ~enumerate_playable~ today skips ~!castable~/~!activatable~) and the
+   *validate* pass (mode C/D). The strategy never sees an action ruled out here.
+
+So the two CR enforcement points map onto the two engine surfaces: occurrence-
+prohibitions onto the event pipeline; action-restrictions onto legal-option
+production. Neither asks the strategy to know the rule.
+
+* Target architecture: one ~is_legal~ core
+
+To make the invariant explicit (rather than implicit-and-mostly-true), the engine
+should name its legality core:
+
+#+begin_src rust
+// The single source of legality truth. Consulted by BOTH surfacing modes.
+fn is_legal(action: &ProposedAction, state: &SimState) -> bool;       // mode C/D validate
+fn legal_options(kind: ActionKind, who: PlayerId, state: &SimState)   // mode A curate
+    -> Vec<ProposedAction>;                                           //   = candidates ∩ is_legal
+#+end_src
+
+- ~legal_options~ = enumerate candidates, keep those passing ~is_legal~. Powers the
+  curated-list methods.
+- ~is_legal~ validates a strategy proposal. Powers ~choose_targets~ assembly checks,
+  the cost-schema payment yield, and (future) ~declare_attackers/blockers~ validation.
+- Category-2 *restrictions* (~AbilityKind::Restriction~ over a *proposed action*) are
+  consulted *once*, inside ~is_legal~. Category-1 *prohibitions*
+  (~AbilityKind::Prohibition~ over a fired event) stay in ~fire_event~.
+
+*** Permission vs restriction — "can't beats can" must be structural (CR 101.2)
+A legal action needs *permission* and *no restriction*; they are *separate* axes and
+must NOT be the same flag:
+- *Permission* (an action becomes available): base rules (a hand card may be cast),
+  plus *grants* — ~castable=true~ / ~CastableFrom(zone)~ from Dauthi (cast an exiled
+  card), Flashback (cast from graveyard), Omniscience (cast for free). These *expand*
+  the option set.
+- *Restriction* (an available action is forbidden): ~AbilityKind::Restriction~ —
+  Lavinia ("can't cast noncreature MV > lands"), Grafdigger's ("can't cast from GY/
+  library"). These *remove* options.
+~is_legal(cast) ⟺ has_permission ∧ ¬restricted~. Because restriction is an AND-NOT
+gate over permission, *"can't beats can" is automatic and order-independent* — a
+Flashback-granted cast under Grafdigger's, or a Dauthi-granted cast under Lavinia, is
+correctly illegal no matter which CE recomputed last. *Anti-pattern (current bug):*
+one ~castable~ bool that grants AND denies → last-writer-wins by recompute order,
+which violates 101.2. The 3b split keeps ~castable~ as the *permission* flag and moves
+denials to ~Restriction~.
+
+Two corollaries the implementation must honour:
+1. *The restriction's zone lives in its ~subject~, not in the gate.* Grafdigger's
+   ("can't cast from GY/library") is ~Restriction { Cast, subject: cast-from-GY|library
+   ∧ … }~; a Dauthi-granted cast *from exile* simply doesn't match (exile ≠ GY/library),
+   so "Dauthi beats Grafdigger" *falls out* of the zone-scoped subject — no special
+   case. Lavinia's subject is zone-agnostic (noncreature MV>lands), so it catches casts
+   from *any* zone, exile included.
+2. *Consult the gate at every cast-production site.* Casts are enumerated from ≥3 places
+   (hand, adventure-exile, granted exile/GY); the ~action_restricted(Cast, …)~ gate must
+   run at *all* of them, or a zone-agnostic restriction leaks. (This is exactly why the
+   ~is_legal~ core should be one function the producers call — a missed site is a missed
+   rule.)
+
+Status: modes A/B/C already realise this implicitly. The remaining work is (i) name
+the core, (ii) route the cast/activate category-2 prohibitions through it (replacing
+the ~castable~/~activatable~ CE flag-flips), and (iii) close the D gap when combat
+warrants it.
+
+* Discipline rules for adding a strategy method
+1. *Pass the legal set, or accept a proposal you will validate — never both-and-trust.*
+2. *Bound the space in the signature* where you can (a ~&[…]~ candidate slice, a
+   ~ChoiceRequest~, a ~CostSchema~) so the strategy cannot express an illegal choice.
+3. *Sanitize returns* for order/partition/choose-K methods (dedup, intersect with the
+   offered set, truncate) — defence in depth even for curated inputs.
+4. *No rules logic in the default impl beyond preference* — the default may be a
+   heuristic (evaluator threshold), never a legality check the engine should own.

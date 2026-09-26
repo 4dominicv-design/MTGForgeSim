@@ -1,0 +1,24 @@
+[package]
+name = "libmtg-decklist"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Portable text/URL Magic: The Gathering decklists, independent of the engine."
+
+# Portable text/URL decklists, independent of the engine. The core (text parsing
+# + the `Decklist` type) is dependency-light and wasm-safe; URL resolvers
+# (Moxfield, MTGGoldfish) + the on-disk cache live behind the native-only
+# `fetch` feature.
+
+[features]
+default = []
+# Native-only: resolve a `Decklist` straight from a Moxfield/MTGGoldfish URL,
+# caching raw responses on disk. Pulls in a blocking HTTP client + JSON.
+fetch = ["dep:ureq", "dep:serde_json"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+ureq = { version = "2", optional = true }
+serde_json = { version = "1.0", optional = true }

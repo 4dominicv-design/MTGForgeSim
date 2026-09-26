@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>dd-hands — Doomsday hand explorer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; padding: 1rem 1.5rem; line-height: 1.4; }
+    h1 { font-size: 1.1rem; color: #c0c0d0; margin-bottom: 0.5rem; }
+    p.lede { color: #9aa; font-size: 0.85rem; max-width: 56rem; margin-bottom: 0.9rem; }
+    .layout { display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem; align-items: start; }
+    textarea { width: 100%; height: 18rem; background: #111a2e; color: #e0e0e0; border: 1px solid #0f3460;
+      border-radius: 6px; padding: 0.6rem; font-family: monospace; font-size: 0.78rem; resize: vertical; }
+    label { font-size: 0.8rem; color: #aaa; display: block; margin: 0.6rem 0 0.2rem; }
+    input[type=number] { background: #111a2e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px;
+      padding: 0.3rem 0.5rem; font-size: 0.8rem; width: 5rem; }
+    input[type=text] { background: #111a2e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px;
+      padding: 0.35rem 0.5rem; font-size: 0.78rem; width: 100%; font-family: monospace; }
+    select { background: #111a2e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px;
+      padding: 0.3rem 0.5rem; font-size: 0.8rem; width: 100%; }
+    .controls { display: flex; gap: 0.8rem; flex-wrap: wrap; align-items: flex-end; }
+    button { background: #16213e; color: #e0e0e0; border: 1px solid #0f3460; padding: 0.45rem 0.9rem;
+      cursor: pointer; font-size: 0.85rem; border-radius: 4px; }
+    button:hover:enabled { background: #0f3460; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    button.primary { background: #1d3a5f; border-color: #2a5a8a; }
+    button.reveal { font-size: 0.75rem; padding: 0.3rem 0.7rem; margin-top: 0.5rem; }
+    .hand { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 0.7rem 0.9rem; margin-bottom: 0.9rem; }
+    .hand-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
+    .hand-head .idx { color: #788; font-size: 0.78rem; }
+    .cards { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+    /* The small card stays the hover target; the zoom is a pointer-events:none overlay so the
+       scaled image never steals the mouse — hover hands off the instant you cross the *small*
+       card's footprint, not the enlarged one's edge. */
+    .card { position: relative; border-radius: 6px; }
+    .card img { width: 86px; border-radius: 4px; display: block; transition: transform 0.12s; pointer-events: none; }
+    .card:hover { z-index: 10; }
+    .card:hover img { transform: scale(2.4); }
+    .card.bottomed img { opacity: 0.3; filter: grayscale(0.7); }
+    .card.kept { box-shadow: 0 0 0 2px #3a9a5a; }
+    .est { display: flex; gap: 0.5rem 1.3rem; flex-wrap: wrap; margin-top: 0.55rem; font-size: 0.82rem; }
+    .est .k { color: #889; }
+    .est b { color: #5dade2; }
+    .suggest { margin-top: 0.6rem; font-size: 0.8rem; }
+    .suggest-head { color: #c8c8d4; margin-bottom: 0.25rem; }
+    .srow { margin: 0.12rem 0; }
+    .srow .pol { color: #889; display: inline-block; min-width: 11rem; }
+    .srow b { color: #5dade2; }
+    .v-keep { color: #6fcf9f; font-weight: bold; }
+    .v-mull { color: #cf8f6f; font-weight: bold; }
+    .bottom { color: #d8b48a; }
+    table.sim { border-collapse: collapse; font-size: 0.8rem; margin-top: 0.6rem; min-width: 26rem; }
+    table.sim th { color: #788; font-weight: normal; text-align: right; padding: 0.1rem 0.7rem; border-bottom: 1px solid #0f3460; }
+    table.sim th:first-child { text-align: left; }
+    table.sim td { padding: 0.12rem 0.7rem; text-align: right; font-variant-numeric: tabular-nums; }
+    table.sim td:first-child { text-align: left; color: #c8c8d4; }
+    table.sim td.model { color: #9fd0ee; }
+    table.sim td.simv { color: #f5b041; font-weight: bold; }
+    .panel { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 0.9rem 1rem; }
+    .muted { color: #788; font-size: 0.78rem; }
+    textarea[readonly] { opacity: 0.8; cursor: default; }
+    .warn { font-size: 0.82rem; color: #e0c089; background: #2a2410; border: 1px solid #5a4a1a;
+      border-radius: 4px; padding: 0.4rem 0.6rem; margin-top: 0.55rem; }
+    .warn b { color: #f5d89a; }
+    a.nav { color: #5dade2; font-size: 0.82rem; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h1>dd-hands &mdash; Doomsday hand explorer</h1>
+  <p class="lede">Deal opening hands from the <b>trained Doomsday list</b> and judge them yourself first &mdash;
+    the model stays quiet until you ask. <b>Reveal</b> shows its instant read (P(cast by T3), E[TTD]) and each
+    policy's KEEP/MULL; <b>simulate</b> then runs the games for the measured truth. Set <b>Keep</b> below 7 for
+    suggested bottoms. The deck is <b>fixed</b>: the model is trained on exactly this list, so its estimates
+    don't transfer to other decks &mdash; paste a hand with an off-list card and it's <i>simulated, not modeled</i>.
+    Note: the speed policy mulligans most opening 7s <i>by design</i>, so don't read its MULL as a bad hand.
+    <a class="nav" href="../goldfish/">&rarr; deck-level goldfish</a></p>
+
+  <div id="loading" class="muted">Loading WASM…</div>
+  <div id="app" class="layout" style="display:none">
+    <div class="panel">
+      <label for="deck">Trained decklist <span class="muted">(fixed — the model is trained on exactly this list)</span></label>
+      <textarea id="deck" spellcheck="false" readonly title="The learned model is trained on exactly this list, so the deck can't be changed."></textarea>
+      <div class="controls" style="margin-top:0.6rem">
+        <div><label for="n">Hands</label><input type="number" id="n" value="8" min="1" max="30"></div>
+        <div><label for="onplay">Play/draw</label>
+          <select id="onplay"><option value="play">On the play</option><option value="draw">On the draw</option></select></div>
+        <div><label for="keep">Keep</label>
+          <select id="keep">
+            <option value="7" selected>7 — no mulligan</option>
+            <option value="6">6 — bottom 1</option>
+            <option value="5">5 — bottom 2</option>
+            <option value="4">4 — bottom 3</option>
+            <option value="3">3 — bottom 4</option>
+            <option value="2">2 — bottom 5</option>
+          </select></div>
+      </div>
+      <div class="controls" style="margin-top:0.5rem">
+        <div><label for="cutoff">Cutoff (T)</label><input type="number" id="cutoff" value="3" min="1" max="10"></div>
+        <div><label for="horizon">Horizon (T)</label><input type="number" id="horizon" value="10" min="3" max="20"></div>
+        <div><label for="sims">Sims / hand</label><input type="number" id="sims" value="300" min="20" max="3000" step="20"></div>
+      </div>
+      <button id="deal" class="primary" style="margin-top:0.8rem">Deal hands</button>
+      <label for="paste" style="margin-top:1rem">Inspect a specific hand</label>
+      <input type="text" id="paste" placeholder="Doomsday | Dark Ritual | Underground Sea | …">
+      <button id="inspect" style="margin-top:0.5rem">Inspect hand</button>
+      <p class="muted" style="margin-top:0.8rem">Reveal runs <span id="simlbl">300</span> games on that exact
+        hand (cast-ASAP, no opponent). The keep/bottom suggestion is instant and updates live with Keep.</p>
+    </div>
+    <div id="hands"></div>
+  </div>
+
+  <script type="module">
+    import init, { deal_hands_web, hand_report_web, hand_estimates_web, keep_suggestion_web } from '../pkg/libmtg_doomsday.js?v=20260626-t2line';
+    const WASM_VER = '20260626-t2line';
+    const SAMPLE = `4 Underground Sea
+4 Polluted Delta
+1 Misty Rainforest
+1 Scalding Tarn
+1 Flooded Strand
+1 Bloodstained Mire
+1 Undercity Sewers
+1 Cavern of Souls
+1 Island
+1 Swamp
+3 Wasteland
+2 Lotus Petal
+1 Lion's Eye Diamond
+4 Dark Ritual
+4 Doomsday
+1 Thassa's Oracle
+1 Jace, Wielder of Mysteries
+4 Brainstorm
+3 Ponder
+1 Consider
+4 Flow State
+1 Edge of Autumn
+1 Street Wraith
+4 Tamiyo, Inquisitive Student
+2 Murktide Regent
+4 Force of Will
+2 Daze
+2 Thoughtseize`;
+
+    const $ = id => document.getElementById(id);
+    const scryfallImg = name => `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name.replace(/ Token$/,''))}&format=image&version=small`;
+    const fmt = (x, d=2) => Number(x).toFixed(d);
+    const onplay = () => $('onplay').value;
+    const keepSize = () => +$('keep').value;
+    let revealed = []; // {cards, cardsRow, renderSug} — for live Keep reactivity
+    // The GBDT is trained on EXACTLY the deck below — its card vocabulary is that list.
+    // A pasted hand with any other card is out-of-distribution: simulate it, don't model it.
+    const KNOWN = new Set(SAMPLE.split('\n').map(l => l.replace(/^\s*\d+\s+/, '').trim()).filter(Boolean));
+
+    function cardsEl(cards) {
+      const row = document.createElement('div'); row.className = 'cards';
+      for (const c of cards) {
+        const d = document.createElement('div'); d.className = 'card';
+        const img = document.createElement('img'); img.src = scryfallImg(c); img.alt = c; img.title = c; img.loading = 'lazy';
+        d.appendChild(img); row.appendChild(d);
+      }
+      return row;
+    }
+
+    function modelRead(est) {
+      const e = document.createElement('div'); e.className = 'est';
+      e.innerHTML = `<span><span class="k">model P(cast)</span> <b>${fmt(est.p_cast)}</b></span>`
+        + `<span><span class="k">model E[TTD]</span> <b>${fmt(est.e_ttd,1)}</b></span>`
+        + `<span><span class="k">resources R</span> <b>${fmt(est.resources,1)}</b></span>`
+        + `<span><span class="k">resolve(R)</span> <b>${fmt(est.resolve)}</b></span>`;
+      return e;
+    }
+
+    // `est` is the model read, or null for an off-list hand (simulation-only — no model column).
+    function simTable(est, sim) {
+      const cut = $('cutoff').value;
+      const metrics = [
+        ['P(cast ≤ T'+cut+')', est && fmt(est.p_cast), fmt(sim.p_cast)],
+        ['E[turns to DD]', est && fmt(est.e_ttd,1), fmt(sim.e_ttd,1)],
+        ['P(cast WITH interaction)', est && (fmt(est.interactive_score)+' *'), fmt(sim.p_cast_intr)],
+        ['E[turns to DD-with-interaction]', '—', fmt(sim.e_ttd_intr,1)],
+        ['protection in hand @ cast', '—', fmt(sim.protection_at_cast)],
+        ['cards in hand @ cast', '—', fmt(sim.cards_at_cast,1)],
+      ];
+      const t = document.createElement('table'); t.className = 'sim';
+      const head = est ? `<tr><th>metric</th><th>model</th><th>sim (${sim.games})</th></tr>`
+                       : `<tr><th>metric</th><th>sim (${sim.games})</th></tr>`;
+      t.innerHTML = head + metrics.map(r => est
+        ? `<tr><td>${r[0]}</td><td class="model">${r[1]}</td><td class="simv">${r[2]}</td></tr>`
+        : `<tr><td>${r[0]}</td><td class="simv">${r[2]}</td></tr>`).join('');
+      const box = document.createElement('div'); box.appendChild(t);
+      if (est) {
+        const note = document.createElement('div'); note.className = 'muted'; note.style.marginTop = '0.35rem';
+        note.textContent = '* the model has no direct P(cast-with-interaction); it scores P(cast) × resolve(R) as a proxy.';
+        box.appendChild(note);
+      }
+      return box;
+    }
+
+    function armRow(label, a, keepSz) {
+      const dec = a.keeps ? '<span class="v-keep">KEEP</span>' : '<span class="v-mull">MULL</span>';
+      const drop = (a.keeps && keepSz < 7) ? ` &mdash; bottom <span class="bottom">${a.bottom.join(', ')}</span>` : '';
+      return `<div class="srow"><span class="pol">${label}</span> ${dec}${drop}</div>`;
+    }
+
+    function suggestEl(sug) {
+      const w = document.createElement('div'); w.className = 'suggest';
+      w.innerHTML = armRow('Learned (max speed)', sug.speed, sug.keep_size)
+        + armRow('Learned-Interactive', sug.interactive, sug.keep_size);
+      return w;
+    }
+
+    // Mark the Interactive policy's bottoms (by name, consuming duplicates) — only when it keeps.
+    function highlight(cardsRow, sug) {
+      const divs = [...cardsRow.querySelectorAll('.card')];
+      divs.forEach(d => d.classList.remove('kept', 'bottomed'));
+      if (sug.keep_size >= 7 || !sug.interactive.keeps) return;
+      const drop = [...sug.interactive.bottom];
+      for (const d of divs) {
+        const name = d.querySelector('img').alt;
+        const i = drop.indexOf(name);
+        if (i >= 0) { d.classList.add('bottomed'); drop.splice(i, 1); }
+        else d.classList.add('kept');
+      }
+    }
+
+    function handCard(cards, idx) {
+      const div = document.createElement('div'); div.className = 'hand';
+      const head = document.createElement('div'); head.className = 'hand-head';
+      head.innerHTML = `<span class="idx">${idx == null ? 'pasted hand' : 'hand #' + (idx+1)}</span>`;
+      div.appendChild(head);
+      const cardsRow = cardsEl(cards); div.appendChild(cardsRow);
+      const offList = cards.filter(c => !KNOWN.has(c));
+      const onList = offList.length === 0;
+      const btn = document.createElement('button'); btn.className = 'reveal'; btn.textContent = 'reveal';
+      const slot = document.createElement('div');
+      btn.onclick = () => {
+        slot.innerHTML = '';
+        try {
+          if (onList) {
+            // Instant: model read + keep/bottom suggestion are pure arithmetic — no games run.
+            const est = JSON.parse(hand_estimates_web(cards.join('|'), onplay()));
+            slot.appendChild(modelRead(est));
+            const sugBox = document.createElement('div'); slot.appendChild(sugBox);
+            const renderSug = s => { sugBox.innerHTML = ''; sugBox.appendChild(suggestEl(s)); highlight(cardsRow, s); };
+            renderSug(JSON.parse(keep_suggestion_web(cards.join('|'), onplay(), keepSize())));
+            revealed.push({ cards, cardsRow, renderSug });
+          } else {
+            // Off-list cards: the model never saw them. Don't model — simulate only.
+            const w = document.createElement('div'); w.className = 'warn';
+            w.innerHTML = `&#9888; Not in the trained list: <b>${offList.join(', ')}</b>. `
+              + `The learned model can't score ${offList.length > 1 ? 'these' : 'this'}, so this hand is <b>simulation-only</b>.`;
+            slot.appendChild(w);
+          }
+          // Opt-in: run the simulator for the measured truth (works for any cards).
+          const simSlot = document.createElement('div');
+          const simBtn = document.createElement('button'); simBtn.className = 'reveal';
+          simBtn.textContent = `simulate (${$('sims').value} games)`;
+          simBtn.onclick = async () => {
+            simBtn.disabled = true; simBtn.textContent = 'simulating…';
+            await new Promise(r => setTimeout(r, 10));
+            try {
+              const rep = JSON.parse(hand_report_web($('deck').value, cards.join('|'),
+                +$('cutoff').value, +$('horizon').value, +$('sims').value, onplay()));
+              simSlot.innerHTML = ''; simSlot.appendChild(simTable(onList ? rep.est : null, rep.sim));
+              simBtn.style.display = 'none';
+            } catch (e) {
+              simSlot.innerHTML = '<div class="muted">sim error: ' + e + '</div>';
+              simBtn.disabled = false; simBtn.textContent = 'simulate';
+            }
+          };
+          slot.appendChild(simBtn); slot.appendChild(simSlot);
+          btn.style.display = 'none';
+        } catch (e) { slot.innerHTML = '<div class="muted">error: ' + e + '</div>'; }
+      };
+      div.appendChild(btn); div.appendChild(slot);
+      return div;
+    }
+
+    function deal() {
+      revealed = [];
+      const out = $('hands'); out.innerHTML = '';
+      try {
+        const hands = JSON.parse(deal_hands_web($('deck').value, +$('n').value, onplay()));
+        hands.forEach((h, i) => out.appendChild(handCard(h.cards, i)));
+      } catch (e) { out.innerHTML = '<div class="muted">error: ' + e + '</div>'; }
+    }
+
+    function inspect() {
+      const raw = $('paste').value.trim(); if (!raw) return;
+      const cards = raw.split(/[|,\n]/).map(s => s.trim()).filter(Boolean);
+      revealed = [];
+      const out = $('hands'); out.innerHTML = '';
+      const div = handCard(cards, null);
+      out.appendChild(div);
+      div.querySelector('button.reveal').click(); // auto-reveal the pasted hand
+    }
+
+    // Live: changing Keep re-suggests bottoms on every already-revealed hand (instant, no re-sim).
+    function reSuggest() {
+      for (const r of revealed) {
+        r.renderSug(JSON.parse(keep_suggestion_web(r.cards.join('|'), onplay(), keepSize())));
+      }
+    }
+
+    (async () => {
+      await init(`../pkg/libmtg_doomsday_bg.wasm?v=${WASM_VER}`);
+      $('deck').value = SAMPLE;
+      $('loading').style.display = 'none'; $('app').style.display = 'grid';
+      $('sims').addEventListener('input', () => $('simlbl').textContent = $('sims').value);
+      $('keep').addEventListener('change', reSuggest);
+      $('onplay').addEventListener('change', reSuggest);
+      $('deal').onclick = deal;
+      $('inspect').onclick = inspect;
+      deal();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Assessing marginal speed-ups for Tempo Doomsday — Doomsday writeups</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif;
+      line-height: 1.6; padding: 1.5rem; }
+    .wrap { max-width: 48rem; margin: 0 auto; }
+    a { color: #5dade2; }
+    .nav { font-size: 0.8rem; margin-bottom: 1.5rem; }
+    .nav a { text-decoration: none; }
+    h1 { font-size: 1.5rem; color: #5dade2; margin-bottom: 0.4rem; letter-spacing: 0.02em; }
+    h2 { font-size: 1.1rem; color: #5dade2; margin: 2rem 0 0.6rem; padding-top: 1rem;
+      border-top: 1px solid #0f3460; }
+    p { margin: 0.7rem 0; }
+    code { background: #111a2e; padding: 0 4px; border-radius: 3px; color: #9fd0ee; font-size: 0.9em; }
+    em { color: #c8c8d4; }
+    table { border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; min-width: 18rem; }
+    th, td { padding: 0.35rem 0.9rem; text-align: left; border-bottom: 1px solid #0f3460; }
+    th { color: #888; font-weight: normal; }
+    th.num { text-align: right; }
+    td.num { color: #f5b041; font-weight: bold; text-align: right; font-variant-numeric: tabular-nums; }
+    .slope { font-size: 0.9rem; color: #9aa; margin: 0.3rem 0 0.8rem; }
+    .slope b { color: #5dade2; }
+    .takeaway { background: #16213e; border-left: 3px solid #5dade2; border-radius: 0 6px 6px 0;
+      padding: 0.7rem 1rem; margin: 1rem 0; }
+    .takeaway b { color: #f5b041; }
+    .howto { background: #16213e; border: 1px solid #0f3460; border-radius: 8px;
+      padding: 0.6rem 1rem; margin: 1.25rem 0; font-size: 0.9rem; }
+    .howto ul { margin: 0.3rem 0 0.3rem 1.2rem; }
+    .howto li { margin: 0.25rem 0; }
+    details { margin: 1.5rem 0; }
+    summary { cursor: pointer; color: #5dade2; font-size: 0.95rem; }
+    details .body { font-size: 0.85rem; color: #c8c8d4; padding: 0.5rem 0 0 0.5rem; }
+    details .body ul { margin-left: 1.1rem; }
+    details .body li { margin: 0.4rem 0; }
+    footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #0f3460;
+      color: #666; font-size: 0.78rem; }
+    footer a { color: #777; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav"><a href="../../">&larr; Doomsday</a> &nbsp;·&nbsp; <a href="../">Writeups</a> &nbsp;·&nbsp; <a href="../../goldfish/">Goldfish simulator</a></div>
+
+  <h1>Assessing marginal speed-ups for Tempo Doomsday</h1>
+
+  <p>A variant of Doomsday that has been consistently putting up results since the printing of Flow
+    State is the <a href="https://www.mtggoldfish.com/deck/7813548#paper">tempo list</a> built by
+    Eureka22422. With slots getting tighter and tigher, that list notably contains only 3 Ponder to
+    make room for the third Wasteland. This "heresy" got me thinking about the effect of the 4th
+    Ponder and was a large part of my motivation for building the
+    <a href="../../goldfish/">doomsday goldfish simulator</a>. In this article, I will attempt to
+    analyze the effect of the 4th ponder, as well as the potential speedup benefit from cutting the
+    Wastelands for more "turbo" style cards like Personal Tutor.</p>
+
+  <p>The doomsday goldfish simulator allows us to understand how likely various configurations of the
+    deck are to assemble a T3 doomsday when the pilot decides to dig as hard as possible for the
+    doomsday. This is meant to model a matchup like Boros Energy where we need to cast the Doomsday
+    before the cats tear us to shreds. We will use the goldfish sim to build up our intution about the
+    generic effects of tweaking the deck and to try to directly compare the concrete proposed
+    configurations.</p>
+
+  <div class="howto">
+    <b>How to read these numbers</b>
+    <ul>
+      <li><b>Metric:</b> <code>P(cast Doomsday by turn 3)</code> — the chance a solitaire game
+        assembles and casts Doomsday by T3.</li>
+      <li><b>Mulligan mode:</b> all numbers below use <code>Realistic</code> — a player-faithful
+        plan-coverage rule (keep a hand iff it has a viable gameplan, like a fast flipped Tamiyo or
+        cantrips and interaction, not just "fast" hands). How the mulligan strategy <em>itself</em>
+        changes the numbers is a separate question for another article.</li>
+      <li><b>All runs:</b> 5000–10000 goldfish games on variants of post-Flow-State tempo Doomsday
+        (the tight-margin questions were re-run at 10000).</li>
+    </ul>
+  </div>
+
+  <h2>Question 1 — Ponder vs. Wasteland</h2>
+  <p>Trade Ponder (premier cantrip) for Wasteland (utility land), total held at 6.</p>
+  <table>
+    <tr><th>Build</th><th class="num">P(DD&le;T3)</th></tr>
+    <tr><td>2 Pon / 4 Wst</td><td class="num">61.6%</td></tr>
+    <tr><td>3 Pon / 3 Wst</td><td class="num">61.8%</td></tr>
+    <tr><td>4 Pon / 2 Wst</td><td class="num">61.5%</td></tr>
+  </table>
+  <p class="slope">Per-card slope: <b>≈ flat</b> — all three land at ~61.6% (10000 games); the
+    Ponder count barely moves the T3 rate at all.</p>
+  <div class="takeaway"><b>Takeaway:</b> The marginal selection of the 4th ponder does not
+    substantially improve the probability of a T3 doomsday. It can, of course, still be optimal to
+    play 4 Ponder for other harder to quantify benefits like cantripping into lands, enabling Flow
+    State, etc.</div>
+  <p class="slope">If this result is surprising, check out
+    <a href="../london-ponder-paradox-6-22-26/">The London Ponder Paradox</a>.</p>
+
+  <h2>Question 2 — Effect of more Lotus Petals</h2>
+  <p>Vary the total number of Lotus Petals in the deck, swapping for cards that don't affect fast
+    doomsdays, like interaction pieces.</p>
+  <table>
+    <tr><th>N</th><th class="num">P(DD&le;T3)</th></tr>
+    <tr><td>0 Petal</td><td class="num">56.8%</td></tr>
+    <tr><td>1 Petal</td><td class="num">59.8%</td></tr>
+    <tr><td>2 Petal</td><td class="num">62.1%</td></tr>
+    <tr><td>3 Petal</td><td class="num">63.3%</td></tr>
+    <tr><td>4 Petal</td><td class="num">65.4%</td></tr>
+  </table>
+  <p class="slope">Per-card slope: <b>≈ +2% / Petal</b>.</p>
+  <div class="takeaway"><b>Takeaway:</b> Marginal fast mana helps us much more than Ponders to get to
+    Doomsday+BBB before T3, and does meaningfully increase the speed of the deck.</div>
+
+  <h2>Question 3 — What about Personal Tutor?</h2>
+  <p>Now suppose we cut wasteland and go back to a more traditional 4 Ponder. We could use those
+    extra slots for more interaction, or we can use them to try to speed up the deck. Supposing we
+    want to speed up the deck to help tempo doomsday take on the "turbo" role a little more readily,
+    what is the best use of those two slots? Let's compare two plausible options: Lotus Petal for more
+    black mana and Personal Tutor for more shots at Doomsday.</p>
+  <p>The deck's 2 stock Petals are always kept; the table varies the <b>total</b> Petal and PT counts
+    as the two ex-Wasteland slots are filled.</p>
+  <table>
+    <tr><th>Flex fill</th><th>Total Petal / PT</th><th class="num">P(DD&le;T3)</th></tr>
+    <tr><td>2 Wasteland (stock)</td><td>2 Petal / 0 PT</td><td class="num">62.2%</td></tr>
+    <tr><td>+2 Petal</td><td>4 Petal / 0 PT</td><td class="num">65.8%</td></tr>
+    <tr><td>+1 Petal +1 PT</td><td>3 Petal / 1 PT</td><td class="num">68.0%</td></tr>
+    <tr><td>+2 PT</td><td>2 Petal / 2 PT</td><td class="num">69.2%</td></tr>
+  </table>
+  <p class="slope">Slopes here: <b>≈ +3.5% / PT</b> vs <b>≈ +1.8% / Petal</b> (still ~additive: 1/1
+    predicts 67.5, measures 68.0).</p>
+  <div class="takeaway"><b>Takeaway:</b> On pure speed, Personal Tutor yields almost double the effect
+    of Lotus Petal. This is not too surprising, as the deck already has more mana (lands, rituals, and
+    petals) than Doomsdays, so Doomsdays ought to be the main limiting factor.</div>
+
+  <h2>Conclusion</h2>
+  <p>If optimizing for straightline speed, Personal Tutor has the highest gain of the available
+    options. The 4th Ponder has a marginal impact on pure speed. My personal conclusion is that Tempo
+    Doomsday should forgo the ~7% boost to the probability of a &le;T3 DD to play Wasteland, which
+    synergizes heavily with the deck's tempo gameplans and pivots. Wasteland also has non-trivial
+    applications tapping for mana to crack clues, cast Flow States and Barrowgoyfs, etc.</p>
+
+  <details>
+    <summary>Method footnotes (optional, for the curious)</summary>
+    <div class="body"><ul>
+      <li>More information on the simulator, goldfish strategy, etc. can be found at
+        <a href="../../goldfish/">the goldfish simulator</a> and in the code repo at
+        <a href="https://github.com/boryas/libmtg">github.com/boryas/libmtg</a>.</li>
+    </ul></div>
+  </details>
+
+  <footer>
+    <a href="../../">Doomsday tools</a> · <a href="../">Writeups</a> ·
+    <a href="../../goldfish/">Goldfish simulator</a> ·
+    <a href="https://github.com/boryas/libmtg">github.com/boryas/libmtg</a>
+  </footer>
+</div>
+</body>
+</html>

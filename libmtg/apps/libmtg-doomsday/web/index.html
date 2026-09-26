@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>doomsday</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #1a1a2e; color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 2rem; gap: 2rem;
+    }
+    header { text-align: center; max-width: 40rem; }
+    h1 { font-size: 1.6rem; color: #5dade2; letter-spacing: 0.04em; }
+    header p { color: #9a9ab0; margin-top: 0.6rem; font-size: 0.95rem; line-height: 1.5; }
+    .apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+      gap: 1.25rem; width: 100%; max-width: 42rem; }
+    a.app {
+      display: block; text-decoration: none; color: inherit;
+      background: #16213e; border: 1px solid #0f3460; border-radius: 10px;
+      padding: 1.25rem 1.4rem; transition: border-color 0.15s, transform 0.15s;
+    }
+    a.app:hover { border-color: #5dade2; transform: translateY(-2px); }
+    a.app h2 { font-size: 1.1rem; color: #e0e0e0; margin-bottom: 0.4rem; }
+    a.app .arrow { color: #5dade2; }
+    a.app p { color: #9a9ab0; font-size: 0.85rem; line-height: 1.5; }
+    footer { color: #555; font-size: 0.75rem; }
+    footer a { color: #777; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Doomsday</h1>
+    <p>Simulation tools for the Legacy Doomsday deck, built on the
+      <code>libmtg</code> Magic: The Gathering engine.</p>
+  </header>
+
+  <main class="apps">
+    <a class="app" href="goldfish/">
+      <h2>Goldfish <span class="arrow">&rarr;</span></h2>
+      <p>Monte-Carlo a decklist against a passive opponent: how fast does it cast
+        Doomsday, and how much protection is in hand?</p>
+    </a>
+    <a class="app" href="hands/">
+      <h2>Hand explorer <span class="arrow">&rarr;</span></h2>
+      <p>Deal opening hands as cards; see the learned model's instant read (P(cast),
+        E[TTD], keep/mull) and reveal the simulated truth for any hand.</p>
+    </a>
+    <a class="app" href="pilegen/">
+      <h2>Pile builder <span class="arrow">&rarr;</span></h2>
+      <p>Generate a board state to the moment Doomsday resolves, arrange the
+        five-card pile, and share it as a URL.</p>
+    </a>
+    <a class="app" href="writeups/">
+      <h2>Writeups <span class="arrow">&rarr;</span></h2>
+      <p>Worked analyses built on the goldfish sim.</p>
+    </a>
+  </main>
+
+  <footer>
+    <a href="https://github.com/boryas/libmtg">github.com/boryas/libmtg</a>
+  </footer>
+</body>
+</html>

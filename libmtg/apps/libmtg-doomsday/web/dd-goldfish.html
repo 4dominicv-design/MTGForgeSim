@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>dd-goldfish</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; padding: 1rem 1.5rem; line-height: 1.4; }
+    h1 { font-size: 1.1rem; color: #c0c0d0; margin-bottom: 0.75rem; }
+    h2 { font-size: 0.95rem; color: #5dade2; margin: 1.25rem 0 0.5rem; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; align-items: start; }
+    textarea { width: 100%; height: 22rem; background: #111a2e; color: #e0e0e0; border: 1px solid #0f3460;
+      border-radius: 6px; padding: 0.6rem; font-family: monospace; font-size: 0.8rem; resize: vertical; }
+    label { font-size: 0.8rem; color: #aaa; display: block; margin: 0.6rem 0 0.2rem; }
+    input[type=number] { background: #111a2e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px;
+      padding: 0.3rem 0.5rem; font-size: 0.8rem; width: 6rem; }
+    select { background: #111a2e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px;
+      padding: 0.3rem 0.5rem; font-size: 0.8rem; width: 100%; }
+    .headline { font-size: 0.95rem; margin-bottom: 0.15rem; }
+    .headline b { color: #f5b041; font-size: 1.5rem; margin: 0 0.2rem; }
+    .subhead { font-size: 0.82rem; margin-bottom: 0.7rem; padding-bottom: 0.6rem;
+      border-bottom: 1px solid #0f3460; color: #b9c6cf; }
+    .subhead b { color: #86c69a; font-size: 1.1rem; margin: 0 0.15rem; }
+    .split { font-size: 0.86rem; margin: 0.15rem 0 0.4rem; color: #9fb0bd; }
+    .split b { font-size: 1.0rem; margin: 0 0.1rem; }
+    .split b.dd { color: #8fb8e0; }
+    .split b.car { color: #f5b041; }
+    tr.cutoff td { color: #f5b041; font-weight: bold; }
+    tr.cutoff .bar { background: #8a5a1a; }
+    button { background: #16213e; color: #e0e0e0; border: 1px solid #0f3460; padding: 0.45rem 0.9rem;
+      cursor: pointer; font-size: 0.85rem; border-radius: 4px; margin-top: 0.8rem; }
+    button:hover:enabled { background: #0f3460; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    .panel { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 0.9rem 1rem; }
+    .muted { color: #888; font-size: 0.85rem; }
+    .mode-desc { font-size: 0.78rem; color: #9aa; line-height: 1.45; margin-top: 0.35rem;
+      padding: 0.45rem 0.6rem; background: #111a2e; border: 1px solid #0f3460; border-radius: 4px; }
+    .mode-desc > summary { cursor: pointer; color: #9fd0ee; font-size: 0.78rem;
+      list-style-position: inside; }
+    .mode-desc[open] > summary { margin-bottom: 0.4rem; }
+    .mode-desc b { color: #c8c8d4; }
+    .mode-desc code { background: #0c1322; padding: 0 3px; border-radius: 3px; color: #9fd0ee; }
+    .mode-desc ol, .mode-desc ul { margin: 0.3rem 0 0.3rem 1.15rem; }
+    .mode-desc ol { padding: 0; }
+    .mode-desc li { margin: 0.18rem 0; }
+    .mode-desc p { margin: 0.4rem 0; }
+    .mode-desc p:first-child { margin-top: 0; }
+    .mode-desc .note { color: #788; }
+    .summary { display: flex; flex-wrap: wrap; gap: 1.2rem; margin-bottom: 0.5rem; }
+    .stat { font-size: 0.85rem; }
+    .stat b { color: #5dade2; font-size: 1.1rem; }
+    table { border-collapse: collapse; font-size: 0.8rem; width: 100%; max-width: 30rem; }
+    table.samples { max-width: 46rem; }
+    table.samples td { font-size: 0.72rem; word-break: break-word; vertical-align: top; padding: 2px 6px; }
+    td, th { padding: 0.15rem 0.4rem; text-align: left; }
+    th { color: #888; font-weight: normal; border-bottom: 1px solid #0f3460; }
+    .bar { background: #0f3460; height: 0.9rem; border-radius: 2px; display: inline-block; vertical-align: middle; }
+    .bar.prot { background: #2a5a2a; }
+    .miss { margin: 0.3rem 0; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .sigil { font-size: 0.7rem; padding: 1px 6px; border-radius: 3px; }
+    .sigil.x { background: #3a1a1a; color: #cf6f6f; border: 1px solid #5a2a2a; }
+    .sigil.tilde { background: #3a3a1a; color: #cfcf6f; border: 1px solid #5a5a2a; }
+    .miss a { color: #5dade2; font-size: 0.78rem; text-decoration: none; border: 1px solid #0f3460;
+      border-radius: 4px; padding: 1px 8px; }
+    .miss a:hover { background: #0f3460; }
+    .miss a.filed { color: #6fcf6f; border-color: #2a5a2a; }
+    .ok { color: #6fcf6f; font-size: 0.85rem; }
+    .progress { height: 0.55rem; background: #111a2e; border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; margin-top: 0.8rem; }
+    .progress-fill { height: 100%; width: 0; background: #5dade2; transition: width 0.08s linear; }
+    .info-badge { font-size: 0.72rem; color: #5dade2; text-decoration: none; border: 1px solid #0f3460;
+      border-radius: 4px; padding: 1px 7px; vertical-align: middle; margin-left: 0.5rem; font-weight: normal; }
+    .info-badge:hover { background: #0f3460; }
+    .methodology { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 0.3rem 0.9rem;
+      margin-bottom: 1rem; max-width: 60rem; }
+    .methodology > summary { cursor: pointer; color: #5dade2; font-size: 0.88rem; padding: 0.45rem 0; list-style-position: inside; }
+    .methodology-body { font-size: 0.83rem; color: #c8c8d4; line-height: 1.5; padding-bottom: 0.5rem; }
+    .methodology-body p { margin: 0.5rem 0; }
+    .methodology-body code { background: #111a2e; padding: 0 3px; border-radius: 3px; color: #9fd0ee; }
+    .methodology-body b { color: #e0e0e8; }
+    .methodology-body .caveats { color: #f5b041; }
+    .methodology-body ul.caveats { margin: 0.2rem 0 0.4rem 1.1rem; }
+    .methodology-body ul.caveats li { margin: 0.3rem 0; color: #c8c8d4; }
+    .breakdown { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; margin: 0.3rem 0 0.6rem; }
+    .breakdown .seg { font-size: 0.82rem; }
+    .breakdown .seg b { font-size: 1.0rem; }
+    .seg.det b { color: #6fcf6f; }
+    .seg.sto b { color: #5dade2; }
+    .seg.miss b { color: #cf6f6f; }
+    /* Verdict sigil — its own line after the timeline. */
+    .verdict-row { margin: 0.28rem 0 0.1rem 0.4rem; }
+    .verdict { font-family: ui-monospace, monospace; font-size: 0.72rem; font-weight: bold;
+      letter-spacing: 0.04em; border-radius: 3px; padding: 0.08rem 0.44rem; }
+    .verdict.sent   { color: #0d1a0d; background: #6fcf6f; }
+    .verdict.found  { color: #241a06; background: #f5b041; }
+    .verdict.failed { color: #cf9a9a; background: #2a1616; border: 1px solid #4a2222; }
+    details.sec { border-top: 1px solid #0f3460; }
+    details.sec > summary { cursor: pointer; color: #5dade2; font-size: 0.95rem; font-weight: 600;
+      padding: 0.6rem 0 0.4rem; list-style-position: inside; }
+    details.sec > summary::-webkit-details-marker { color: #5dade2; }
+    details.sec .sec-body { padding: 0 0 0.6rem; }
+    table.breakdown-tbl { width: auto; max-width: 24rem; }
+    table.breakdown-tbl td.pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: bold; white-space: nowrap; }
+    table.breakdown-tbl td.pct.det { color: #6fcf6f; }
+    table.breakdown-tbl td.pct.sto { color: #5dade2; }
+    table.breakdown-tbl td.pct.miss { color: #cf6f6f; }
+    table.breakdown-tbl tr.sub td { border-bottom: none; color: #889; font-size: 0.82em; padding: 1px 0.4rem; }
+    table.breakdown-tbl tr.sub td:first-child { padding-left: 1.5rem; }
+    table.breakdown-tbl tr.sub td.pct { color: #889; font-weight: normal; }
+    .sample { border-bottom: 1px solid #0f3460; padding: 0.35rem 0; }
+    .sample:last-child { border-bottom: none; }
+    .srow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.18rem 0.3rem;
+      font-size: 0.74rem; margin: 0.12rem 0; }
+    .srow .tag { min-width: 3.4rem; font-size: 0.68rem; color: #889; }
+    .srow.mull .tag { color: #cf8f6f; }
+    .srow .tag.keep { color: #6fcf9f; }
+    /* ONE temporally-linear flow: turn markers + play/draw/fate chips, all inline. */
+    .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.28rem;
+      margin: 0.15rem 0 0.1rem 0.4rem; padding-left: 0.4rem; border-left: 2px solid #0f3460; }
+    .turn-chip { font-family: ui-monospace, monospace; font-size: 0.64rem; font-weight: bold;
+      color: #0a1520; background: #f5b041; border-radius: 3px; padding: 0.03rem 0.36rem; }
+    .step { font-family: ui-monospace, monospace; font-size: 0.68rem; color: #a9c7e0;
+      background: #0e2137; border: 1px solid #143152; border-radius: 3px; padding: 0.04rem 0.32rem; }
+    .step.pop { color: #ffd479; background: #3a2a0f; border-color: #6a4a15; font-weight: bold; }
+    .step.draw { color: #86c69a; background: #0f2418; border-color: #1d3a26; }
+    /* Cantrip reasons: a full-width line that breaks the flow (so it lands before the next
+       turn), each reason in small italics. The fate-chips carry the same text on hover.
+       Fate language: 👁 seen · 📖 to top of library · 🪦 graveyard · ⤓ to bottom · 🔀 shuffled. */
+    .dig-notes { flex-basis: 100%; margin: 0.02rem 0 0.05rem 0.9rem; }
+    .dig-note { display: block; font-size: 0.62rem; color: #6f8090; font-style: italic; line-height: 1.4; }
+    .step.fate-see { color: #9aa7b2; background: #171d24; border-color: #2b333c; border-style: dashed; }
+    .step.fate-top { color: #8fb8e0; background: #10233a; border-color: #234a6e; }
+    .step.fate-gy  { color: #d59a9a; background: #271414; border-color: #4a2222; }
+    .step.fate-bot { color: #8a94a0; background: #181c22; border-color: #2a3038; }
+    .step.fate-shuffle { color: #e3b878; background: #2a2010; border-color: #4c3a15; }
+    .step.fate-play { color: #a6c2a0; background: #16241a; border-color: #274229; }
+  </style>
+</head>
+<body>
+  <h1>dd-goldfish &mdash; Doomsday goldfish simulator
+    <a id="methodology-toggle" href="#methodology" class="info-badge" title="How this works &amp; caveats">&#9432; methodology</a>
+  </h1>
+
+  <details id="methodology" class="methodology">
+    <summary>&#9432; How this works &amp; known caveats</summary>
+    <div class="methodology-body">
+      <p><b>What it is.</b> A <b>Monte-Carlo simulation</b>: thousands of real games are played
+        out by a <b>rules-accurate MTG engine</b> (stack, priority, mana, CR-correct
+        resolution &mdash; spells resolve while on the stack, searches are real choices,
+        etc.), with a <b>pluggable "goldfishing" strategy</b> as the pilot. "Goldfishing"
+        means <b>solitaire &mdash; no opponent</b>: we measure only <i>how fast</i> the deck
+        assembles its combo, never whether it would win a real game.</p>
+
+      <p><b>The objective.</b> Everything is scored by <b>P(cast Doomsday by the cut-off
+        turn)</b>. The cut-off is the turn past which a slow combo is assumed dead (raced /
+        Wastelanded). A slow hand is therefore nearly worthless, so the pilot plays for speed.</p>
+
+      <p><b>How the pilot decides (gameplay).</b> A backward solver estimates, for any state,
+        <b>P(cast by cut-off)</b> (<code>g</code>) from a hypergeometric model: deterministic
+        mana assembly, plus drawing into the missing piece, with cantrips counted as extra
+        card "looks." If a <b>guaranteed (no-draw) line</b> lands by the cut-off it
+        <i>settles</i> and executes it; otherwise it <i>gambles</i> &mdash; develops a black
+        source and digs (and rips a fetch when even the best case is too slow).</p>
+
+      <p><b>How the pilot mulligans.</b> Selectable, because the headline rate shifts a lot with
+        how hard you ship hands:
+        <b>Realistic</b> (default) ignores "air" cards (Wasteland, LED, Thassa, …) and keeps a hand
+        with real mana <i>and</i> a concrete plan: a guaranteed line; Doomsday + a black source + a
+        dig; a deterministic Tamiyo flip by turn&nbsp;2; or, unflooded, two looks (or one look + a
+        supporter). It ships no-mana / flooded / do-nothing hands &mdash; an explicit, inspectable
+        rule that does <i>not</i> consult <code>g</code>. <b>Keep 7</b> never mulligans &mdash; the
+        deck's raw speed, with no mulligan decisions mixed in.</p>
+
+      <p class="caveats"><b>Structural caveats (true for any deck).</b></p>
+      <ul class="caveats">
+        <li><b>The true P(ttd &le; K) is genuinely hard to compute.</b> The exact probability that
+          the combo lands by turn K depends on library order, <i>chained</i> card selection (a
+          cantrip that finds another cantrip), and play sequencing &mdash; it is intractable to
+          evaluate exactly. <code>g</code> is a deliberately tractable <i>approximation</i>, so it
+          carries bias. Everything below follows from that.</li>
+        <li><b><code>g</code> is pessimistic.</b> It ranks hands correctly (monotone) but tends to
+          <i>under-predict</i> the true rate, worst on weak hands (the mana model is
+          single-resource; the cantrip terms are approximate).</li>
+        <li><b>Cantrip "looks" are a heuristic.</b> Non-additive and time-capped, with no true
+          modeling of chained cantrips.</li>
+        <li><b>Mulligan modes change the result.</b> The headline rate is reported <i>for the
+          selected mode</i>; comparing a deck across both modes (Keep 7 → Realistic) is the honest
+          read. Neither consults <code>g</code> &mdash; Realistic is a pure card-shape rule, Keep 7
+          never mulligans.</li>
+        <li>The per-hand predicted P is the model's <i>own estimate</i> of <code>g</code>; the
+          <b>headline % is the measured simulation rate</b> &mdash; the honest number, free of that bias.</li>
+      </ul>
+    </div>
+  </details>
+
+  <div class="layout">
+    <div>
+      <label for="deck">Decklist (paste Moxfield / MTGGoldfish / Arena text export)</label>
+      <textarea id="deck" spellcheck="false"></textarea>
+      <label for="mull">Mulligan mode</label>
+      <select id="mull">
+        <option value="realistic" selected>Realistic &mdash; keep a real plan</option>
+        <option value="keep7">Keep 7 &mdash; never mulligan</option>
+      </select>
+      <details id="mull-help" class="mode-desc">
+        <summary>How this mode decides</summary>
+        <div id="mull-desc"></div>
+      </details>
+      <label for="cutoff">Cut-off turn <span class="muted">(combo deadline)</span></label>
+      <input type="number" id="cutoff" value="3" min="1" max="10">
+      <details id="solver-help" class="mode-desc">
+        <summary>The cut-off and the solver</summary>
+        <div>
+          <p><b>Cut-off turn.</b> The deadline for the combo. A send after it is treated as too slow
+          to matter, since by then the opponent has raced you or destroyed your mana. Every result is
+          scored as <code>P(send by the cut-off)</code> &mdash; resolve Doomsday <i>or</i> pop the
+          Fantasticar &mdash; so a lower cut-off rewards faster decks.</p>
+          <p class="note"><b>How <code>P(send)</code> is computed &mdash; a hypergeometric
+          approximation.</b> For any game state the solver reasons backward from the payoff. If a
+          guaranteed line lands by the cut-off with no draws, <code>P(send) = 1</code>. Otherwise it
+          estimates: for each missing piece (a black source, the payoff, the car's fuel) it counts
+          the matching cards still in the library (the &ldquo;outs&rdquo;) and takes the
+          <b>hypergeometric</b> chance of drawing enough of them by the cut-off &mdash; drawing
+          <i>without replacement</i> &mdash; where each castable cantrip adds to the draw budget (the
+          extra cards it sees). The pieces are combined by multiplying their marginal probabilities,
+          and the two win-conditions as <code>P(send) = 1 &minus; (1&minus;P<sub>DD</sub>)(1&minus;P<sub>car</sub>)</code>.
+          It's deliberately an approximation &mdash; it assumes the pieces (and the two win-cons) are
+          independent and treats cantrips as blind extra draws rather than modelling chained
+          selection exactly &mdash; tractable, and good enough to rank hands and guide play (it runs a
+          guaranteed line when one finishes by the cut-off, else develops mana and digs).</p>
+        </div>
+      </details>
+      <details id="cantrip-help" class="mode-desc">
+        <summary>How the pilot digs (cantrips)</summary>
+        <div>
+          <p>Every card-selection decision falls out of one number: <b><code>P(send by the
+          cut-off)</code></b>, re-derived from the current game state. The pilot never uses a card
+          value table &mdash; it picks the option that leaves that probability highest.</p>
+          <ul>
+            <li><b>Ponder</b> reveals three. It compares the best <i>arrangement</i> of those three
+            on top (draw them over the next turns) against <i>shuffling them away</i> and keeps
+            whichever scores higher &mdash; so a brick top gets shuffled, a live top gets kept.</li>
+            <li><b>Brainstorm</b> draws three, then puts back the two cards the line needs least,
+            keeping payoffs, mana, and fuel.</li>
+            <li><b>Consider / surveil</b> keeps the revealed card on top only if it scores at least
+            as high as a fresh unknown draw; otherwise it bins it.</li>
+            <li><b>Scry / Preordain</b> keeps the arrangement (rest to the bottom) that scores
+            highest.</li>
+            <li><b>Fetch / tutor / dig</b> pick the target that most raises the probability &mdash; a
+            dual that pays the <i>next</i> pip, or staging the payoff itself on top.</li>
+          </ul>
+          <p class="note">In <b>Sample games</b> below, each turn's cantrip decisions are shown as
+          per-card <b>fate-chips</b> under the plays &mdash; <b>👁</b> seen, <b>📖</b> put on top of
+          the library, <b>🪦</b> to the graveyard, <b>⤓</b> to the bottom, <b>🔀</b> shuffled away,
+          and drawn (green) &mdash; with the reasoning and the resulting <code>P(send)</code> as a
+          note beside them.</p>
+        </div>
+      </details>
+      <label for="onplay">Play / draw</label>
+      <select id="onplay">
+        <option value="random" selected>Random &mdash; 50/50 (matches the writeups)</option>
+        <option value="play">On the play &mdash; no turn-1 draw</option>
+        <option value="draw">On the draw &mdash; +1 card on turn 1</option>
+      </select>
+      <label for="games">Games <span class="muted">(±~1.4% at 1000)</span></label>
+      <input type="number" id="games" value="1000" min="1" max="50000">
+      <br>
+      <button id="run" disabled>Loading wasm&hellip;</button>
+      <div id="progress" class="progress" hidden><div id="progress-fill" class="progress-fill"></div></div>
+      <div id="progress-label" class="muted" style="margin-top:0.3rem;"></div>
+    </div>
+    <div>
+      <div id="missing"></div>
+      <div id="results" class="muted">Run a deck to see the cast-turn and protection distributions.</div>
+    </div>
+  </div>
+
+  <script type="module">
+    // `?v=` cache-busts the glue + wasm together on each deploy (the files have stable
+    // names, so a stale .js against a new .wasm would otherwise hang at "Loading wasm").
+    // Bump this string on every deploy.
+    import init, { run_goldfish_asap_web, missing_cards_web }
+      from '../pkg/libmtg_doomsday.js?v=20260701-split';
+    const WASM_VER = '20260701-split';
+
+    const REPO = 'boryas/libmtg';
+
+    // Precise per-mode descriptions, shown live under the selector so the user knows
+    // exactly what they're getting. Kept in sync with `goldfish::mull::MullMode`.
+    const MULL_DESC = {
+      realistic: `<p>A fixed rule that reads the cards in hand &mdash; it never uses the solver's
+        probability. First, <b>air cards are ignored</b> (Wasteland, Cavern, Thassa's Oracle, LED,
+        Edge of Autumn, Unearth, Jace) &mdash; the hand is read as if they weren't drawn. Then keep
+        if any of these holds:</p>
+        <ol>
+          <li>it can cast Doomsday by the cut-off with no draws &mdash; a guaranteed line;</li>
+          <li><b>Doomsday</b> in hand + a black source + a castable look (dig for the rest);</li>
+          <li>a deterministic <b>Tamiyo</b> flip by turn 2;</li>
+          <li>not flooded (under four real lands), a black source, and <b>either</b> two castable
+            looks <b>or</b> one look plus a supporter.</li>
+        </ol>
+        <p>Otherwise mulligan &mdash; the hands it ships have no real mana, four or more lands
+        (flood), or no plan above.</p>
+        <p class="note">A <i>castable look</i> is a cantrip you can cast off a blue <b>land</b> (a
+        lone Lotus Petal doesn't count &mdash; it's one-shot), or a free cantrip (Street Wraith). A
+        <i>black source</i> is a black land or a Petal (a bare Dark Ritual doesn't count). A
+        <i>supporter</i> is interaction or a threat body (Tamiyo / Murktide / …).</p>`,
+      keep7: `<p>Never mulligans &mdash; it always keeps the opening seven. This shows the deck's
+        raw speed, with no mulligan decisions mixed in.</p>`,
+    };
+
+    // Default deck: the current car-focused Doomsday + The Fantasticar list
+    // (moxfield.com/decks/6Q6fAV_uhXiGfpTg2Lcvbw), mainboard, so the page shows off car
+    // exploration out of the box (all cards in-catalog).
+    const SAMPLE = `4 Underground Sea
+4 Polluted Delta
+1 Flooded Strand
+1 Misty Rainforest
+1 Scalding Tarn
+1 Marsh Flats
+1 Island
+1 Swamp
+1 Undercity Sewers
+1 Cavern of Souls
+4 Lotus Petal
+1 Lion's Eye Diamond
+2 Mishra's Bauble
+4 Dark Ritual
+4 Doomsday
+4 The Fantasticar
+4 Brainstorm
+4 Ponder
+3 Flow State
+1 Consider
+1 Edge of Autumn
+1 Street Wraith
+4 Force of Will
+3 Daze
+3 Thoughtseize
+1 Thassa's Oracle`;
+
+    const $ = (id) => document.getElementById(id);
+    $('deck').value = SAMPLE;
+
+    function issueUrl(card, scry) {
+      const mode = card.kind === 'Missing'
+        ? '✗ not in catalog (excluded from simulation)'
+        : '~ in catalog but inert (no simulation effects — drawn, never cast)';
+      const oracle = scry?.oracle_text ?? '_(paste the card\'s Oracle text from Scryfall)_';
+      const cost = scry?.mana_cost || '_unknown_';
+      const type = scry?.type_line || '_unknown_';
+      const body =
+        `**Card:** ${card.name}\n\n` +
+        `**Failure mode:** ${mode}\n\n` +
+        `**Mana cost:** ${cost}\n` +
+        `**Type:** ${type}\n\n` +
+        '**Oracle text:**\n```\n' + oracle + '\n```\n\n' +
+        `**Source:** filed from the dd-goldfish web frontend.`;
+      const q = new URLSearchParams({ labels: 'missing-card', title: `Card: ${card.name}`, body });
+      return `https://github.com/${REPO}/issues/new?${q}`;
+    }
+
+    // Best-effort Scryfall enrichment (api.scryfall.com is CORS-enabled). Upgrades
+    // the pre-filled issue body in place; the base link works regardless.
+    async function enrich(card, link) {
+      try {
+        const r = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}`);
+        if (!r.ok) return;
+        link.href = issueUrl(card, await r.json());
+      } catch { /* offline / not found — keep the base link */ }
+    }
+
+    // Open issues already filed for a card, keyed by lowercased card name (from
+    // `Card: <name>` titles). One unauthenticated request; dedups so we don't
+    // offer to file a card someone already reported.
+    async function fetchFiledCards() {
+      const map = new Map();
+      try {
+        const r = await fetch(`https://api.github.com/repos/${REPO}/issues?state=open&per_page=100`);
+        if (!r.ok) return map;
+        for (const it of await r.json()) {
+          if (it.pull_request) continue;
+          const m = /^Card:\s*(.+)$/i.exec(it.title || '');
+          if (m) map.set(m[1].trim().toLowerCase(), it);
+        }
+      } catch { /* offline / rate-limited — fall back to always offering to file */ }
+      return map;
+    }
+
+    async function renderMissing(list) {
+      const el = $('missing');
+      if (!list.length) { el.innerHTML = '<div class="ok">✓ every card in this deck is simulated.</div>'; return; }
+      el.innerHTML = '<h2>Unimplemented cards</h2>';
+      const filed = await fetchFiledCards();
+      for (const card of list) {
+        const row = document.createElement('div');
+        row.className = 'miss';
+        const sig = card.kind === 'Missing' ? '<span class="sigil x">✗ missing</span>'
+                                             : '<span class="sigil tilde">~ inert</span>';
+        const link = document.createElement('a');
+        link.target = '_blank'; link.rel = 'noopener';
+        const existing = filed.get(card.name.toLowerCase());
+        if (existing) {
+          link.textContent = `already filed → #${existing.number}`;
+          link.href = existing.html_url;
+          link.classList.add('filed');
+        } else {
+          link.textContent = 'File missing-card issue ↗';
+          link.href = issueUrl(card, null);
+        }
+        row.innerHTML = `${sig} <span>${card.qty}× ${card.name}</span>`;
+        row.appendChild(link);
+        el.appendChild(row);
+        if (!existing) enrich(card, link); // only enrich a card we're offering to file
+      }
+    }
+
+    // GoldfishStats are additive counts, so a big run = sum of small batches.
+    function emptyStats() {
+      return { games: 0, fails: 0, cast_turn: {}, protection: {},
+               cutoff: 0, mull_count: {}, mull_pred_sum: {}, deterministic_cast: 0, stochastic_cast: 0,
+               miss_mana: 0, miss_payoff: 0, miss_both: 0, miss_neither: 0, found_payoff: 0,
+               dd_sends: 0, car_sends: 0, samples: [] };
+    }
+    function mergeStats(a, p) {
+      a.games += p.games; a.fails += p.fails;
+      a.cutoff = p.cutoff || a.cutoff;
+      a.found_payoff += (p.found_payoff || 0);
+      a.dd_sends += (p.dd_sends || 0); a.car_sends += (p.car_sends || 0);
+      a.deterministic_cast += (p.deterministic_cast || 0);
+      a.stochastic_cast += (p.stochastic_cast || 0);
+      a.miss_mana += (p.miss_mana || 0); a.miss_payoff += (p.miss_payoff || 0);
+      a.miss_both += (p.miss_both || 0); a.miss_neither += (p.miss_neither || 0);
+      if (!a.samples) a.samples = [];
+      if (p.samples && a.samples.length < 8) a.samples.push(...p.samples.slice(0, 8 - a.samples.length));
+      for (const [k, v] of Object.entries(p.cast_turn)) a.cast_turn[k] = (a.cast_turn[k] || 0) + v;
+      for (const [k, v] of Object.entries(p.protection)) a.protection[k] = (a.protection[k] || 0) + v;
+      for (const [k, v] of Object.entries(p.mull_count || {})) a.mull_count[k] = (a.mull_count[k] || 0) + v;
+      for (const [k, v] of Object.entries(p.mull_pred_sum || {})) a.mull_pred_sum[k] = (a.mull_pred_sum[k] || 0) + v;
+    }
+
+    function bar(frac, cls = '') {
+      return `<span class="bar ${cls}" style="width:${(frac * 140).toFixed(0)}px"></span> ${(frac * 100).toFixed(1)}%`;
+    }
+
+    function castBy(s, t) {
+      if (!s.games) return 0;
+      let n = 0;
+      for (const k of Object.keys(s.cast_turn)) if (Number(k) <= t) n += s.cast_turn[k];
+      return n / s.games;
+    }
+
+    function renderStats(s, opts) {
+      const { mull, cutoff, hasCar } = opts;
+      // Two-wincon decks (The Fantasticar) score P(send) = P(Doomsday OR car pop); the
+      // Doomsday-only decks keep the "cast Doomsday" wording.
+      const goal = hasCar ? 'send' : 'cast Doomsday';
+      const goalPast = hasCar ? 'sent' : 'cast Doomsday';
+      const successes = s.games - s.fails;
+      const turns = Object.keys(s.cast_turn).map(Number).sort((a, b) => a - b);
+      const maxT = cutoff; // sim is capped at the cut-off, so that's the last turn
+      let weighted = 0;
+      for (const t of turns) weighted += t * s.cast_turn[t];
+      const meanCast = successes ? (weighted / successes) : NaN;
+      let protW = 0, protN = 0;
+      for (const [p, c] of Object.entries(s.protection)) { protW += Number(p) * c; protN += c; }
+      const meanProt = protN ? (protW / protN) : NaN;
+      const pByCutoff = castBy(s, cutoff);
+      const pct = (x) => (100 * x / Math.max(1, s.games)).toFixed(1);
+
+      // Each result block is its own collapsible <details> section.
+      const section = (title, body, open = true) =>
+        `<details class="sec"${open ? ' open' : ''}><summary>${title}</summary>`
+        + `<div class="sec-body">${body}</div></details>`;
+
+      let cum = 0;
+      const pdfRows = [], cdfRows = [];
+      for (let t = (turns[0] ?? 1); t <= maxT; t++) {
+        const c = s.cast_turn[t] || 0;
+        cum += c;
+        const mark = t === cutoff ? ' class="cutoff"' : '';
+        pdfRows.push(`<tr${mark}><td>T${t}</td><td>${bar(c / s.games)}</td></tr>`);
+        cdfRows.push(`<tr${mark}><td>≤ T${t}</td><td>${bar(cum / s.games)}</td></tr>`);
+      }
+      const protRows = Object.keys(s.protection).map(Number).sort((a, b) => a - b).map(p =>
+        `<tr><td>${p} layer${p === 1 ? '' : 's'}</td><td>${bar(s.protection[p] / successes, 'prot')}</td></tr>`);
+
+      const pilot = 'cast-ASAP solver &middot; ' +
+        ({ realistic: 'Realistic mull', keep7: 'Keep-7' }[mull] || mull);
+
+      const hasRich = s.mull_count && Object.keys(s.mull_count).length > 0;
+      let secs = '';
+
+      // The outcome breakdown (guaranteed line / missing BBB / missing DD) is Doomsday-shaped
+      // — its internals count only the DD line — so it's hidden for two-wincon (car) decks.
+      if (hasRich && !hasCar) {
+        const det = s.deterministic_cast || 0, sto = s.stochastic_cast || 0;
+        const miss = Math.max(0, s.games - det - sto);
+        const mm = s.miss_mana || 0, mp = s.miss_payoff || 0, mb = s.miss_both || 0, mn = s.miss_neither || 0;
+        const sub = (label, x) => `<tr class="sub"><td>${label}</td><td class="pct">${pct(x)}%</td></tr>`;
+        let bd = `<table class="breakdown-tbl">
+          <tr><td>guaranteed line in opening hand</td><td class="pct det">${pct(det)}%</td></tr>
+          <tr><td>drew / cantripped into it</td><td class="pct sto">${pct(sto)}%</td></tr>
+          <tr><td>not by the cut-off</td><td class="pct miss">${pct(miss)}%</td></tr>`;
+        if (mm + mp + mb + mn > 0) {
+          bd += sub('&rarr; missing mana (no BBB)', mm) + sub('&rarr; missing payoff (no DD)', mp)
+              + sub('&rarr; missing both', mb) + (mn ? sub('&rarr; had both (timing)', mn) : '');
+        }
+        bd += `</table>`;
+        secs += section(`Outcomes (by T${cutoff})`, bd, true);
+      }
+
+      secs += section(`P(${goalPast} on turn t) &mdash; density (PDF)`, `<table>${pdfRows.join('')}</table>`, true);
+      secs += section(`P(${goalPast} by turn t) &mdash; cumulative (CDF)`, `<table>${cdfRows.join('')}</table>`, true);
+
+      // Sample games: a few openers — thrown-back mulligans + the kept hand + the
+      // step-by-step sequence that led to the send (land drops, casts, the payoff).
+      if (s.samples && s.samples.length) {
+        const noun = hasCar ? 'send' : 'cast';
+        // Card names get the same chip treatment everywhere (hands + the sequence).
+        const cardChips = (cards) => cards.map(c => `<span class="step">${c}</span>`).join('');
+        // A cantrip decision "…reason… ‖ code:Card;code:Card;shuffle" → a row of fate-chips
+        // (each card's destiny) plus the reason as a muted cherry. Fate visual language:
+        // 👁 seen · 📖 put on top of library · 🪦 to graveyard · ⤓ to bottom · 🔀 shuffled ·
+        // drawn (green).
+        const FATE = { see: '👁', top: '📖', gy: '🪦', bot: '⤓', draw: '', play: '' };
+        const FCLS = { see: 'fate-see', top: 'fate-top', gy: 'fate-gy', bot: 'fate-bot', draw: 'draw', play: 'fate-play' };
+        // A cantrip decision body "{reason} ‖ {tokens}" → just the fate-chips for the timeline
+        // (each carries the reason as a hover title). The reason text is rendered separately as
+        // a small-italics note on the next line.
+        const digReason = (body) => { const b = body.indexOf(' ‖ '); return b >= 0 ? body.slice(0, b) : body; };
+        const renderDig = (body) => {
+          const note = digReason(body).replace(/"/g, '&quot;');
+          const b = body.indexOf(' ‖ ');
+          const toks = b >= 0 ? body.slice(b + 3).split(';').filter(Boolean) : [];
+          return toks.map(t => {
+            if (t === 'shuffle') return `<span class="step fate-shuffle" title="${note}">🔀 shuffled</span>`;
+            const ci = t.indexOf(':');
+            const code = ci >= 0 ? t.slice(0, ci) : t, card = ci >= 0 ? t.slice(ci + 1) : '';
+            const em = FATE[code] || '';
+            return `<span class="step ${FCLS[code] || ''}" title="${note}">${em ? em + ' ' : ''}${card}</span>`;
+          }).join('');
+        };
+        const body = s.samples.map(g => {
+          const cast = (g.cast_turn !== null && g.cast_turn !== undefined);
+          // Verdict sigil (its own line, after the timeline): SENT · sent by the cut-off;
+          // FOUND · drew a payoff but couldn't assemble it in time; FAILED · no payoff drawn.
+          const verdict = cast
+            ? `<span class="verdict sent">✓ SENT · T${g.cast_turn}</span>`
+            : g.found_payoff
+              ? `<span class="verdict found">◐ FOUND · a payoff, but no ${noun} in time</span>`
+              : `<span class="verdict failed">✗ FAILED · no payoff drawn</span>`;
+          const mulls = (g.mulligans || []).map(h =>
+            `<div class="srow mull"><span class="tag">mull</span> ${cardChips(h)}</div>`).join('');
+          // ONE continuous, temporally-linear flow: play steps and cantrip decisions merged
+          // by their logged position (`@pos`), turn boundaries marked by an inline chip — no
+          // per-turn row breaks. Entries are "@{pos} T{n} · {body}"; a dig at pos P sorts just
+          // before the play at raw index P (it happened before that line was appended).
+          const parseEv = (s, kind) => {
+            const sp = s.indexOf(' '), dot = s.indexOf(' · ');
+            if (sp < 0 || dot < 0) return null;
+            return { pos: +s.slice(1, sp), turn: s.slice(sp + 1, dot).trim(), body: s.slice(dot + 3), kind };
+          };
+          const evs = [];
+          for (const s of (g.line || [])) { const e = parseEv(s, 'play'); if (e) evs.push(e); }
+          for (const c of (g.cantrips || [])) { const e = parseEv(c, 'dig'); if (e) evs.push(e); }
+          const key = (e) => e.kind === 'dig' ? e.pos - 0.5 : e.pos;
+          evs.sort((a, b) => key(a) - key(b));
+          // Fate-chips flow inline in temporal order; each turn's cantrip REASONS flush out on
+          // their own line (small italics) at the turn boundary — before the next turn.
+          let html = '', curTurn = null, notes = [];
+          const flush = () => {
+            if (notes.length) html += `<div class="dig-notes">` + notes.map(n => `<span class="dig-note">${n}</span>`).join('') + `</div>`;
+            notes = [];
+          };
+          for (const e of evs) {
+            if (e.turn !== curTurn) { flush(); html += `<span class="turn-chip">${e.turn}</span>`; curTurn = e.turn; }
+            if (e.kind === 'play') {
+              const cls = e.body.includes('⚡') ? ' pop'
+                : (e.body.startsWith('↳') || e.body.startsWith('draw ')) ? ' draw' : '';
+              html += `<span class="step${cls}">${e.body}</span>`;
+            } else {
+              html += renderDig(e.body);
+              notes.push(digReason(e.body));
+            }
+          }
+          flush();
+          const seq = `<div class="flow">${html}</div>`;
+          return `<div class="sample">${mulls}`
+            + `<div class="srow"><span class="tag keep">keep ${7 - g.mulls}</span> ${cardChips(g.hand)}</div>`
+            + seq
+            + `<div class="verdict-row">${verdict}</div></div>`;
+        }).join('');
+        secs += section(`Sample games <span class="muted">&mdash; openers + the ${noun} sequence</span>`, body, false);
+      }
+
+      if (hasRich) {
+        const totalKeeps = Object.values(s.mull_count).reduce((a, b) => a + b, 0) || 1;
+        const mullRows = [];
+        for (let k = 0; k <= 3; k++) {
+          const n = s.mull_count[k] || 0;
+          if (!n) continue;
+          const avg = (s.mull_pred_sum[k] || 0) / n;
+          mullRows.push(`<tr><td>${7 - k} cards${k ? ` <span class="muted">(${k} mull)</span>` : ''}</td>`
+            + `<td>${bar(n / totalKeeps)}</td><td class="muted">avg predicted ${(avg * 100).toFixed(0)}%</td></tr>`);
+        }
+        secs += section(`Mulligans &mdash; kept hand size + avg predicted P(${goal} by T${cutoff})`,
+          `<table>${mullRows.join('')}</table>`, false);
+      }
+
+      secs += section(`Protection layers in hand at ${hasCar ? 'send' : 'cast'}`, `<table>${protRows.join('')}</table>`, false);
+
+      // Found a payoff (drew a Doomsday / Fantasticar) — whether or not we sent. The gap
+      // to the send rate is "found the wincon but couldn't assemble it by the cut-off".
+      const pFound = (s.found_payoff || 0) / Math.max(1, s.games);
+      const pStuck = Math.max(0, pFound - pByCutoff);
+      const payoffNoun = hasCar ? 'Doomsday or Fantasticar' : 'Doomsday';
+      // Of the sends, which wincon carried it (car decks only).
+      const nSends = (s.dd_sends || 0) + (s.car_sends || 0);
+      const ddShare = nSends ? Math.round(100 * s.dd_sends / nSends) : 0;
+      const carShare = nSends ? Math.round(100 * s.car_sends / nSends) : 0;
+      const splitLine = hasCar && nSends
+        ? `<div class="split">of the sends: <b class="dd">Doomsday ${ddShare}%</b> &middot; <b class="car">Fantasticar ${carShare}%</b></div>`
+        : '';
+
+      $('results').className = '';
+      $('results').innerHTML = `
+        <h2>Goldfish results <span class="muted">&mdash; ${pilot}</span></h2>
+        <div class="panel">
+          <div class="headline">P(${goal} by T${cutoff}) <b>${(pByCutoff * 100).toFixed(1)}%</b>
+            <span class="muted">&mdash; the cut-off objective${hasCar ? ' (Doomsday or Fantasticar pop)' : ''}</span></div>
+          ${splitLine}
+          <div class="subhead">found a payoff <b>${(pFound * 100).toFixed(1)}%</b>
+            <span class="muted">&mdash; drew a ${payoffNoun}: ${(pByCutoff * 100).toFixed(1)}% sent, ${(pStuck * 100).toFixed(1)}% found it but couldn't assemble by T${cutoff}</span></div>
+          <div class="summary">
+            <div class="stat">mean cast turn <b>${meanCast.toFixed(2)}</b></div>
+            <div class="stat">mean protection <b>${meanProt.toFixed(2)}</b></div>
+          </div>
+          ${secs}
+        </div>`;
+    }
+
+    async function run() {
+      const deck = $('deck').value;
+      const games = $('games').valueAsNumber || 2000;
+      const mull = $('mull').value;
+      const cutoff = $('cutoff').valueAsNumber || 3;
+      const playDraw = $('onplay').value;
+      // The objective is P(cast by the cut-off), and the sim's turn cap IS the cut-off
+      // (no reason to simulate past the turn the objective is judged on).
+      const sim = (n) => run_goldfish_asap_web(deck, n, cutoff, mull, playDraw);
+      const btn = $('run'), prog = $('progress'), fill = $('progress-fill'), plabel = $('progress-label');
+      btn.disabled = true; btn.textContent = 'Simulating…';
+      prog.hidden = false; fill.style.width = '0'; plabel.textContent = '';
+      await new Promise(r => setTimeout(r, 0));
+      try {
+        await renderMissing(JSON.parse(missing_cards_web(deck)));
+        // The sim is synchronous wasm, so chunk it into batches and yield to the
+        // browser between them to repaint the progress bar. GoldfishStats are
+        // additive, so the merged aggregate equals one big run.
+        const steps = Math.min(40, Math.max(1, games));
+        const batch = Math.ceil(games / steps);
+        const agg = emptyStats();
+        for (let done = 0; done < games; ) {
+          const n = Math.min(batch, games - done);
+          mergeStats(agg, JSON.parse(sim(n)));
+          done += n;
+          fill.style.width = (done / games * 100).toFixed(1) + '%';
+          plabel.textContent = `simulating… ${done.toLocaleString()} / ${games.toLocaleString()} games`;
+          await new Promise(r => setTimeout(r, 0));
+        }
+        const hasCar = /the fantasticar/i.test(deck);
+        renderStats(agg, { mull, cutoff, hasCar });
+      } finally {
+        prog.hidden = true; plabel.textContent = '';
+        btn.disabled = false; btn.textContent = 'Goldfish it';
+      }
+    }
+
+    // The title badge opens the methodology panel (and scrolls to it).
+    $('methodology-toggle').addEventListener('click', () => { $('methodology').open = true; });
+
+    // Live mulligan-mode description so the user sees exactly what each mode does.
+    const syncMullDesc = () => { $('mull-desc').innerHTML = MULL_DESC[$('mull').value] || ''; };
+    $('mull').addEventListener('change', syncMullDesc);
+    syncMullDesc();
+
+    try {
+      await init(`../pkg/libmtg_doomsday_bg.wasm?v=${WASM_VER}`);
+    } catch (e) {
+      console.error('wasm init failed', e);
+      $('run').textContent = 'wasm failed — hard-refresh (Ctrl/Cmd-Shift-R)';
+      throw e;
+    }
+    const btn = $('run');
+    btn.disabled = false; btn.textContent = 'Goldfish it';
+    btn.addEventListener('click', run);
+  </script>
+</body>
+</html>

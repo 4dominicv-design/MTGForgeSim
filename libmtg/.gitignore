@@ -1,0 +1,10 @@
+/target
+# wasm-pack output (the doomsday app emits apps/libmtg-doomsday/pkg)
+**/pkg/
+decklist_cache/
+
+# Author-local, kept on disk but not shared:
+#   - deploy.sh: rsyncs to a personal server
+#   - the WotC Comprehensive Rules reference copy
+deploy.sh
+crates/libmtg-engine/src/MagicCompRules-20260227.txt

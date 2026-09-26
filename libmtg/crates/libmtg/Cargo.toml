@@ -1,0 +1,15 @@
+[package]
+name = "libmtg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Umbrella crate re-exporting the libmtg family (engine, decklist, doomsday) as modules."
+
+[dependencies]
+libmtg-engine = { path = "../libmtg-engine" }
+libmtg-decklist = { path = "../libmtg-decklist" }
+# default-features = false drops the doomsday CLI deps (clap/textplots/ureq) so
+# depending on the umbrella stays lean for library consumers.
+libmtg-doomsday = { path = "../../apps/libmtg-doomsday", default-features = false }
