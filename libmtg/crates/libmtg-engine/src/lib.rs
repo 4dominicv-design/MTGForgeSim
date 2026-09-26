@@ -1496,6 +1496,7 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
                         && matches!(ma.source_zone, SourceZone::Battlefield)
                         && (!ma_requires_tap(ma) || !bf.tapped)
                         && ma.condition.as_ref().map_or(true, |cond| obj_matches(cond, *id, state))
+                        && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
                         && color.map_or(true, |c| ma.produces.contains(&c))
                 })
                 .max_by_key(|(_, ma)| (coverage(ma), ma.produces_count))?;
@@ -1520,6 +1521,8 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
                         && matches!(ma.source_zone, SourceZone::Battlefield)
                         && (!ma_requires_tap(ma) || !bf.tapped)
                         && ma.condition.as_ref().map_or(true, |cond| obj_matches(cond, *id, state))
+                        && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
+                        && ma.condition.as_ref().map_or(true, |cond| obj_matches(cond, *id, state))
                         // Colorless producers encode no W/U/B/R/G entries.
                         && ma.produces.is_empty()
                         && ma.produces_count > 0
@@ -1537,6 +1540,7 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
             let (idx, _) = mas.iter().enumerate().find(|(_, ma)| {
                 ma.activatable
                     && matches!(ma.source_zone, SourceZone::Hand)
+                    && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
                     && color.map_or(true, |col| ma.produces.contains(&col))
             })?;
             Some((c.id, idx))
@@ -2429,8 +2433,12 @@ impl SimState {
         for card in self.permanents_of(who) {
             if let Some(bf) = card.bf() {
                 let card_id = card.id;
+                if crate::ir::executor::mana_ability_restricted(self, card_id) {
+                    continue;
+                }
                 let mas = self.def_of(card_id).map(|d| d.mana_abilities()).unwrap_or(&[]);
                 let avail: Vec<_> = mas.iter()
+                    .filter(|ma| ma.activatable)
                     .filter(|ma| matches!(ma.source_zone, SourceZone::Battlefield))
                     .filter(|ma| ma.timing == ActivationTiming::Default)
                     .filter(|ma| !ma_requires_tap(ma) || !bf.tapped)
@@ -2456,9 +2464,13 @@ impl SimState {
 
         // Hand-zone zero-cost mana abilities (e.g. Simian Spirit Guide).
         for card in self.hand_of(who) {
+            if crate::ir::executor::mana_ability_restricted(self, card.id) {
+                continue;
+            }
             let mas = self.catalog.get(&card.catalog_key)
                 .map(|d| d.mana_abilities()).unwrap_or(&[]);
             let free: Vec<_> = mas.iter()
+                .filter(|ma| ma.activatable)
                 .filter(|ma| matches!(ma.source_zone, SourceZone::Hand))
                 .filter(|ma| ma.costs.first_mana_cost().map_or(true, |mc| mc.mana_value() == 0))
                 .cloned()
@@ -4320,6 +4332,22 @@ fn run_cast_submachine(
     let mana_cost = combined_mana_cost_with_x(mana_cost, &def.additional_costs, chosen_x);
     state.casting_spell = Some(card_id);
     run_mana_loop(state, t, who, &mana_cost);
+    if !state.player(who).pool.can_pay(&mana_cost) {
+        let remaining = crate::ir::executor::remaining_mana(&state.player(who).pool, &mana_cost);
+        let available: Vec<_> = enumerate_mana_abilities(state, who).iter()
+            .map(|a| format!("{}@{:?}#{}", state.objects.get(&a.source_id)
+                .map(|o| o.catalog_key.as_str()).unwrap_or("?"), a.source_id, a.ability_index))
+            .collect();
+        let plan: Vec<_> = auto_tap_plan_remaining(state, who, &remaining).iter()
+            .map(|a| format!("{:?}#{}", a.source_id, a.ability_index)).collect();
+        eprintln!("[cast-debug] turn={} phase={:?} spell={} id={:?} cost={:?} pool=(W={} U={} B={} R={} G={} C={} total={}) residual={:?} available={:?} plan={:?}",
+            state.current_turn, state.current_phase, state.objects.get(&card_id)
+                .map(|o| o.catalog_key.as_str()).unwrap_or("?"), card_id,
+            mana_cost, state.player(who).pool.w, state.player(who).pool.u,
+            state.player(who).pool.b, state.player(who).pool.r,
+            state.player(who).pool.g, state.player(who).pool.c,
+            state.player(who).pool.total, remaining, available, plan);
+    }
 
     // ── PayCosts + Complete (CR 601.2h-i) ───────────────────────────────
     // cast_spell handles remaining payment (pool already filled by mana loop),

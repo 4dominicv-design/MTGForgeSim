@@ -1,0 +1,578 @@
+   Compiling libmtg-engine v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v5_3\MTGSim\libmtg\crates\libmtg-engine)
+warning: fields `produces` and `produces_count` are never read
+    --> crates\libmtg-engine\src\lib.rs:1177:5
+     |
+1174 | pub struct ManaAbilityOption {
+     |            ----------------- fields in this struct
+...
+1177 |     produces: Vec<Color>,
+     |     ^^^^^^^^
+1178 |     produces_count: usize,
+     |     ^^^^^^^^^^^^^^
+     |
+     = note: `ManaAbilityOption` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `take_sideboard_card` is never used
+    --> crates\libmtg-engine\src\lib.rs:2233:19
+     |
+2089 | impl SimState {
+     | ------------- method in this implementation
+...
+2233 |     pub(crate) fn take_sideboard_card(&mut self, who: PlayerId, index: usize) -> Option<String> {
+     |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: method `display` is never used
+  --> crates\libmtg-engine\src\catalog.rs:61:19
+   |
+56 | impl ManaCost {
+   | ------------- method in this implementation
+...
+61 |     pub(crate) fn display(&self) -> String {
+   |                   ^^^^^^^
+
+warning: method `as_land` is never used
+    --> crates\libmtg-engine\src\catalog.rs:1271:19
+     |
+ 967 | impl CardDef {
+     | ------------ method in this implementation
+...
+1271 |     pub(crate) fn as_land(&self) -> Option<&LandData> {
+     |                   ^^^^^^^
+
+warning: function `eff_ir` is never used
+  --> crates\libmtg-engine\src\effects.rs:59:15
+   |
+59 | pub(crate) fn eff_ir(who: PlayerId, action: crate::ir::action::Action) -> Effect {
+   |               ^^^^^^
+
+warning: function `eff_draw` is never used
+  --> crates\libmtg-engine\src\effects.rs:67:15
+   |
+67 | pub(crate) fn eff_draw(who: PlayerId, n: usize) -> Effect {
+   |               ^^^^^^^^
+
+warning: function `eff_sacrifice` is never used
+   --> crates\libmtg-engine\src\effects.rs:234:15
+    |
+234 | pub(crate) fn eff_sacrifice(caster: PlayerId, who: Who, filter: Filter) -> Effect {
+    |               ^^^^^^^^^^^^^
+
+warning: function `eff_bounce_target` is never used
+   --> crates\libmtg-engine\src\effects.rs:286:15
+    |
+286 | pub(crate) fn eff_bounce_target(caster: PlayerId) -> Effect {
+    |               ^^^^^^^^^^^^^^^^^
+
+warning: function `eff_reanimate` is never used
+   --> crates\libmtg-engine\src\effects.rs:296:15
+    |
+296 | pub(crate) fn eff_reanimate(actor: PlayerId) -> Effect {
+    |               ^^^^^^^^^^^^^
+
+warning: function `eff_fetch_search` is never used
+   --> crates\libmtg-engine\src\effects.rs:474:15
+    |
+474 | pub(crate) fn eff_fetch_search(
+    |               ^^^^^^^^^^^^^^^^
+
+warning: field `set_to_index` is never read
+   --> crates\libmtg-engine\src\snapshot.rs:130:5
+    |
+129 | pub struct CardRegistry {
+    |            ------------ field in this struct
+130 |     set_to_index: HashMap<String, u16>,
+    |     ^^^^^^^^^^^^
+
+   Compiling libmtg-forge v0.1.0 (C:\Users\4domi\Downloads\MTGSim_Forge_Build_v5_3\MTGSim\libmtg\apps\libmtg-forge)
+warning: `libmtg-engine` (lib) generated 11 warnings
+    Finished `release` profile [optimized] target(s) in 32.05s
+     Running `target\release\forge-lab.exe agent-compare apps/libmtg-forge/examples/forge-trinisphere.txt --games 10 --seed 1 --max-turns 3 --rollouts 1`
+[cast-debug] turn=2 phase=Some(Phase(PostCombatMain)) spell=Trinisphere id=ObjId(44) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 3 } pool=(W=0 U=2 B=0 R=0 G=0 C=0 total=2) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Trinisphere by us (pool B=0 U=2 tot=2, hand=4)
+[cast-debug] turn=3 phase=Some(Phase(PreCombatMain)) spell=Trinisphere id=ObjId(44) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 3 } pool=(W=0 U=2 B=0 R=0 G=0 C=0 total=2) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Trinisphere by us (pool B=0 U=2 tot=2, hand=4)
+[cast-debug] turn=3 phase=Some(Phase(PreCombatMain)) spell=Trinisphere id=ObjId(44) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 3 } pool=(W=0 U=2 B=0 R=0 G=0 C=0 total=2) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Trinisphere by us (pool B=0 U=2 tot=2, hand=5)
+[cast-debug] turn=3 phase=Some(Phase(PostCombatMain)) spell=Trinisphere id=ObjId(44) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 3 } pool=(W=0 U=2 B=0 R=0 G=0 C=0 total=2) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Trinisphere by us (pool B=0 U=2 tot=2, hand=4)
+[cast-debug] turn=3 phase=Some(Phase(PostCombatMain)) spell=Paradox Engine id=ObjId(49) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 5 } pool=(W=0 U=2 B=0 R=0 G=0 C=2 total=4) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Paradox Engine by us (pool B=0 U=2 tot=4, hand=4)
+[cast-debug] turn=2 phase=Some(Phase(PreCombatMain)) spell=Grim Monolith id=ObjId(13) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 2 } pool=(W=0 U=1 B=0 R=0 G=0 C=0 total=1) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Grim Monolith by us (pool B=0 U=1 tot=1, hand=5)
+[cast-debug] turn=3 phase=Some(Phase(PreCombatMain)) spell=Kozilek's Command id=ObjId(18) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 2, generic: 6 } pool=(W=0 U=1 B=0 R=0 G=0 C=6 total=7) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Kozilek's Command by us (pool B=0 U=1 tot=7, hand=3)
+[cast-debug] turn=3 phase=Some(Phase(PreCombatMain)) spell=Kozilek's Command id=ObjId(18) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 2, generic: 3 } pool=(W=0 U=1 B=0 R=0 G=0 C=3 total=4) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Kozilek's Command by us (pool B=0 U=1 tot=4, hand=2)
+[cast-debug] turn=3 phase=Some(Phase(PreCombatMain)) spell=Kozilek's Command id=ObjId(18) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 2, generic: 5 } pool=(W=0 U=1 B=0 R=0 G=0 C=5 total=6) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Kozilek's Command by us (pool B=0 U=1 tot=6, hand=2)
+[cast-debug] turn=3 phase=Some(Phase(PostCombatMain)) spell=Kozilek's Command id=ObjId(18) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 2, generic: 4 } pool=(W=0 U=1 B=0 R=0 G=0 C=4 total=5) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Kozilek's Command by us (pool B=0 U=1 tot=5, hand=2)
+[cast-debug] turn=2 phase=Some(Phase(PreCombatMain)) spell=The One Ring id=ObjId(31) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 4 } pool=(W=0 U=1 B=0 R=0 G=0 C=2 total=3) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for The One Ring by us (pool B=0 U=1 tot=3, hand=3)
+[cast-debug] turn=3 phase=Some(Phase(PreCombatMain)) spell=Karn, the Great Creator id=ObjId(51) cost=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 4 } pool=(W=0 U=1 B=0 R=0 G=0 C=2 total=3) residual=ManaCost { w: 0, u: 0, b: 0, r: 0, g: 0, c: 0, generic: 1 } available=[] plan=[]
+[priority] BUG: cast failed for Karn, the Great Creator by us (pool B=0 U=1 tot=3, hand=3)
+{
+  "requested_model": "jev-latest",
+  "resolved_models": [
+    "jev-1.13.0"
+  ],
+  "games": 10,
+  "seed": 1,
+  "max_turns": 3,
+  "rollouts_per_action": 1,
+  "teacher_decisions": 95,
+  "jev_successful_decisions": 95,
+  "jev_errors": 0,
+  "jev_teacher_agreements": 46,
+  "heuristic_teacher_agreements": 48,
+  "jev_teacher_agreement_rate": 0.4842105263157895,
+  "heuristic_teacher_agreement_rate": 0.5052631578947369,
+  "average_jev_confidence": 0.37547368421052635,
+  "average_jev_latency_ms": 180.47368421052633,
+  "total_input_tokens": 137335,
+  "total_output_tokens": 3982,
+  "estimated_input_cost_usd": 0.005768070000000001,
+  "disagreements": [
+    {
+      "game_index": 0,
+      "game_seed": 10451216379200822465,
+      "turn": 2,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "cast:Karn, the Great Creator@ObjId(50):Main",
+      "heuristic_action_id": "cast:Karn, the Great Creator@ObjId(50):Main",
+      "jev_confidence": 0.41,
+      "jev_probabilities": {
+        "cast:Karn, the Great Creator@ObjId(50):Main": 0.55,
+        "cast:Kozilek's Command@ObjId(15):Main": 0.11,
+        "cast:Trinisphere@ObjId(43):Main": 0.18,
+        "pass": 0.16
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Kozilek's Command@ObjId(15):Main :: Cast Kozilek's Command.",
+        "cast:Trinisphere@ObjId(43):Main :: Cast Trinisphere.",
+        "cast:Karn, the Great Creator@ObjId(50):Main :: Cast Karn, the Great Creator."
+      ]
+    },
+    {
+      "game_index": 0,
+      "game_seed": 10451216379200822465,
+      "turn": 2,
+      "phase": "Some(Phase(PostCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "cast:Karn, the Great Creator@ObjId(50):Main",
+      "heuristic_action_id": "cast:Karn, the Great Creator@ObjId(50):Main",
+      "jev_confidence": 0.29,
+      "jev_probabilities": {
+        "cast:Karn, the Great Creator@ObjId(50):Main": 0.47,
+        "cast:Kozilek's Command@ObjId(15):Main": 0.1,
+        "cast:Trinisphere@ObjId(43):Main": 0.14,
+        "pass": 0.29
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Kozilek's Command@ObjId(15):Main :: Cast Kozilek's Command.",
+        "cast:Trinisphere@ObjId(43):Main :: Cast Trinisphere.",
+        "cast:Karn, the Great Creator@ObjId(50):Main :: Cast Karn, the Great Creator."
+      ]
+    },
+    {
+      "game_index": 0,
+      "game_seed": 10451216379200822465,
+      "turn": 3,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "cast:Paradox Engine@ObjId(49):Main",
+      "teacher_action": "cast:Paradox Engine:Main",
+      "jev_action_id": "cast:Karn, the Great Creator@ObjId(50):Main",
+      "heuristic_action_id": "cast:Karn, the Great Creator@ObjId(50):Main",
+      "jev_confidence": 0.18,
+      "jev_probabilities": {
+        "activate:Urza's Saga@ObjId(40)#0": 0.29,
+        "cast:Karn, the Great Creator@ObjId(50):Main": 0.33,
+        "cast:Kozilek's Command@ObjId(15):Main": 0.06,
+        "cast:Paradox Engine@ObjId(49):Main": 0.19,
+        "cast:Trinisphere@ObjId(43):Main": 0.08,
+        "pass": 0.05
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Kozilek's Command@ObjId(15):Main :: Cast Kozilek's Command.",
+        "cast:Trinisphere@ObjId(43):Main :: Cast Trinisphere.",
+        "cast:Paradox Engine@ObjId(49):Main :: Cast Paradox Engine.",
+        "cast:Karn, the Great Creator@ObjId(50):Main :: Cast Karn, the Great Creator.",
+        "activate:Urza's Saga@ObjId(40)#0 :: Create a Construct token."
+      ]
+    },
+    {
+      "game_index": 1,
+      "game_seed": 10905525725756348110,
+      "turn": 1,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "land:Urza's Workshop@ObjId(59)",
+      "teacher_action": "land:Urza's Workshop",
+      "jev_action_id": "land:Urza's Workshop@ObjId(57)",
+      "heuristic_action_id": "land:Urza's Workshop@ObjId(59)",
+      "jev_confidence": 0.34,
+      "jev_probabilities": {
+        "land:Urza's Workshop@ObjId(57)": 0.5,
+        "land:Urza's Workshop@ObjId(59)": 0.25,
+        "land:Urza's Workshop@ObjId(60)": 0.06,
+        "pass": 0.19
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "land:Urza's Workshop@ObjId(59) :: Play Urza's Workshop as the land for this turn.",
+        "land:Urza's Workshop@ObjId(57) :: Play Urza's Workshop as the land for this turn.",
+        "land:Urza's Workshop@ObjId(60) :: Play Urza's Workshop as the land for this turn."
+      ]
+    },
+    {
+      "game_index": 2,
+      "game_seed": 2092789425003139053,
+      "turn": 1,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "cast:Giant's Boulder@ObjId(46):Main",
+      "teacher_action": "cast:Giant's Boulder:Main",
+      "jev_action_id": "cast:Manifold Key@ObjId(21):Main",
+      "heuristic_action_id": "cast:Manifold Key@ObjId(21):Main",
+      "jev_confidence": 0.07,
+      "jev_probabilities": {
+        "cast:Giant's Boulder@ObjId(46):Main": 0.29,
+        "cast:Manifold Key@ObjId(21):Main": 0.39,
+        "pass": 0.32
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Giant's Boulder@ObjId(46):Main :: Cast Giant's Boulder.",
+        "cast:Manifold Key@ObjId(21):Main :: Cast Manifold Key."
+      ]
+    },
+    {
+      "game_index": 3,
+      "game_seed": 7958955049054603978,
+      "turn": 1,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "cast:Giant's Boulder@ObjId(46):Main",
+      "teacher_action": "cast:Giant's Boulder:Main",
+      "jev_action_id": "cast:Lotus Petal@ObjId(8):Main",
+      "heuristic_action_id": "cast:Giant's Boulder@ObjId(46):Main",
+      "jev_confidence": 0.71,
+      "jev_probabilities": {
+        "cast:Giant's Boulder@ObjId(46):Main": 0.08,
+        "cast:Lotus Petal@ObjId(8):Main": 0.8,
+        "pass": 0.12
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Lotus Petal@ObjId(8):Main :: Cast Lotus Petal.",
+        "cast:Giant's Boulder@ObjId(46):Main :: Cast Giant's Boulder."
+      ]
+    },
+    {
+      "game_index": 3,
+      "game_seed": 7958955049054603978,
+      "turn": 2,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "land:Planar Nexus@ObjId(5)",
+      "heuristic_action_id": "land:Planar Nexus@ObjId(5)",
+      "jev_confidence": 0.62,
+      "jev_probabilities": {
+        "cast:Trinisphere@ObjId(44):Main": 0.19,
+        "land:Planar Nexus@ObjId(5)": 0.74,
+        "pass": 0.07
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere.",
+        "land:Planar Nexus@ObjId(5) :: Play Planar Nexus as the land for this turn."
+      ]
+    },
+    {
+      "game_index": 3,
+      "game_seed": 7958955049054603978,
+      "turn": 2,
+      "phase": "Some(Phase(PostCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "land:Planar Nexus@ObjId(5)",
+      "heuristic_action_id": "land:Planar Nexus@ObjId(5)",
+      "jev_confidence": 0.46,
+      "jev_probabilities": {
+        "cast:Trinisphere@ObjId(44):Main": 0.16,
+        "land:Planar Nexus@ObjId(5)": 0.64,
+        "pass": 0.2
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere.",
+        "land:Planar Nexus@ObjId(5) :: Play Planar Nexus as the land for this turn."
+      ]
+    },
+    {
+      "game_index": 3,
+      "game_seed": 7958955049054603978,
+      "turn": 3,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "land:Ancient Tomb@ObjId(33)",
+      "heuristic_action_id": "land:Planar Nexus@ObjId(5)",
+      "jev_confidence": 0.39,
+      "jev_probabilities": {
+        "cast:Trinisphere@ObjId(44):Main": 0.11,
+        "land:Ancient Tomb@ObjId(33)": 0.54,
+        "land:Planar Nexus@ObjId(5)": 0.28,
+        "pass": 0.07
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere.",
+        "land:Planar Nexus@ObjId(5) :: Play Planar Nexus as the land for this turn.",
+        "land:Ancient Tomb@ObjId(33) :: Play Ancient Tomb as the land for this turn."
+      ]
+    },
+    {
+      "game_index": 3,
+      "game_seed": 7958955049054603978,
+      "turn": 3,
+      "phase": "Some(Phase(PostCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "cast:Paradox Engine@ObjId(49):Main",
+      "heuristic_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "jev_confidence": 0.36,
+      "jev_probabilities": {
+        "cast:Paradox Engine@ObjId(49):Main": 0.52,
+        "cast:Relic of Sauron@ObjId(62):Main": 0.18,
+        "cast:Trinisphere@ObjId(44):Main": 0.09,
+        "pass": 0.21
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Paradox Engine@ObjId(49):Main :: Cast Paradox Engine.",
+        "cast:Relic of Sauron@ObjId(62):Main :: Cast Relic of Sauron.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere."
+      ]
+    },
+    {
+      "game_index": 4,
+      "game_seed": 7134611160154358618,
+      "turn": 1,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "cast:Lotus Petal@ObjId(8):Main",
+      "heuristic_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "jev_confidence": 0.41,
+      "jev_probabilities": {
+        "cast:Lotus Petal@ObjId(8):Main": 0.61,
+        "cast:Trinisphere@ObjId(44):Main": 0.24,
+        "pass": 0.15
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere.",
+        "cast:Lotus Petal@ObjId(8):Main :: Cast Lotus Petal."
+      ]
+    },
+    {
+      "game_index": 4,
+      "game_seed": 7134611160154358618,
+      "turn": 2,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "heuristic_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "jev_confidence": 0.24,
+      "jev_probabilities": {
+        "cast:Trinisphere@ObjId(44):Main": 0.62,
+        "pass": 0.38
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere."
+      ]
+    },
+    {
+      "game_index": 4,
+      "game_seed": 7134611160154358618,
+      "turn": 3,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "teacher_action": "cast:Trinisphere:Main",
+      "jev_action_id": "cast:Grim Monolith@ObjId(13):Main",
+      "heuristic_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "jev_confidence": 0.36,
+      "jev_probabilities": {
+        "cast:Grim Monolith@ObjId(13):Main": 0.57,
+        "cast:Trinisphere@ObjId(44):Main": 0.28,
+        "pass": 0.15
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere.",
+        "cast:Grim Monolith@ObjId(13):Main :: Cast Grim Monolith."
+      ]
+    },
+    {
+      "game_index": 4,
+      "game_seed": 7134611160154358618,
+      "turn": 3,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "activate:Grim Monolith@ObjId(11)#0",
+      "heuristic_action_id": "activate:Grim Monolith@ObjId(11)#0",
+      "jev_confidence": 0.24,
+      "jev_probabilities": {
+        "activate:Grim Monolith@ObjId(11)#0": 0.62,
+        "pass": 0.38
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "activate:Grim Monolith@ObjId(11)#0 :: Pay {4}: untap Grim Monolith."
+      ]
+    },
+    {
+      "game_index": 5,
+      "game_seed": 13647215125184110592,
+      "turn": 1,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "land:Urza's Saga@ObjId(40)",
+      "teacher_action": "land:Urza's Saga",
+      "jev_action_id": "land:Urza's Workshop@ObjId(60)",
+      "heuristic_action_id": "land:Urza's Saga@ObjId(40)",
+      "jev_confidence": 0.21,
+      "jev_probabilities": {
+        "land:Urza's Saga@ObjId(40)": 0.47,
+        "land:Urza's Workshop@ObjId(60)": 0.47,
+        "pass": 0.06
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "land:Urza's Saga@ObjId(40) :: Play Urza's Saga as the land for this turn.",
+        "land:Urza's Workshop@ObjId(60) :: Play Urza's Workshop as the land for this turn."
+      ]
+    },
+    {
+      "game_index": 6,
+      "game_seed": 7191089600892374487,
+      "turn": 2,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "cast:Giant's Boulder@ObjId(48):Main",
+      "teacher_action": "cast:Giant's Boulder:Main",
+      "jev_action_id": "land:Ancient Tomb@ObjId(34)",
+      "heuristic_action_id": "land:Planar Nexus@ObjId(5)",
+      "jev_confidence": 0.5,
+      "jev_probabilities": {
+        "cast:Giant's Boulder@ObjId(48):Main": 0.05,
+        "land:Ancient Tomb@ObjId(34)": 0.63,
+        "land:Planar Nexus@ObjId(5)": 0.25,
+        "pass": 0.07
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Giant's Boulder@ObjId(48):Main :: Cast Giant's Boulder.",
+        "land:Planar Nexus@ObjId(5) :: Play Planar Nexus as the land for this turn.",
+        "land:Ancient Tomb@ObjId(34) :: Play Ancient Tomb as the land for this turn."
+      ]
+    },
+    {
+      "game_index": 6,
+      "game_seed": 7191089600892374487,
+      "turn": 2,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "heuristic_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "jev_confidence": 0.08,
+      "jev_probabilities": {
+        "cast:Kozilek's Command@ObjId(18):Main": 0.25,
+        "cast:Trinisphere@ObjId(44):Main": 0.38,
+        "pass": 0.37
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Kozilek's Command@ObjId(18):Main :: Cast Kozilek's Command.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere."
+      ]
+    },
+    {
+      "game_index": 6,
+      "game_seed": 7191089600892374487,
+      "turn": 3,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "land:Planar Nexus@ObjId(5)",
+      "teacher_action": "land:Planar Nexus",
+      "jev_action_id": "land:Urza's Tower@ObjId(24)",
+      "heuristic_action_id": "land:Urza's Tower@ObjId(24)",
+      "jev_confidence": 0.48,
+      "jev_probabilities": {
+        "cast:Kozilek's Command@ObjId(18):Main": 0.06,
+        "cast:Trinisphere@ObjId(44):Main": 0.09,
+        "land:Planar Nexus@ObjId(5)": 0.23,
+        "land:Urza's Tower@ObjId(24)": 0.58,
+        "pass": 0.04
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Kozilek's Command@ObjId(18):Main :: Cast Kozilek's Command.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere.",
+        "land:Urza's Tower@ObjId(24) :: Play Urza's Tower as the land for this turn.",
+        "land:Planar Nexus@ObjId(5) :: Play Planar Nexus as the land for this turn."
+      ]
+    },
+    {
+      "game_index": 6,
+      "game_seed": 7191089600892374487,
+      "turn": 3,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "teacher_action": "cast:Trinisphere:Main",
+      "jev_action_id": "activate:Giant's Boulder@ObjId(48)#0",
+      "heuristic_action_id": "cast:Trinisphere@ObjId(44):Main",
+      "jev_confidence": 0.26,
+      "jev_probabilities": {
+        "activate:Giant's Boulder@ObjId(48)#0": 0.44,
+        "cast:Kozilek's Command@ObjId(18):Main": 0.13,
+        "cast:Trinisphere@ObjId(44):Main": 0.26,
+        "pass": 0.17
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Kozilek's Command@ObjId(18):Main :: Cast Kozilek's Command.",
+        "cast:Trinisphere@ObjId(44):Main :: Cast Trinisphere.",
+        "activate:Giant's Boulder@ObjId(48)#0 :: Activate this engine-approved ability."
+      ]
+    },
+    {
+      "game_index": 6,
+      "game_seed": 7191089600892374487,
+      "turn": 3,
+      "phase": "Some(Phase(PreCombatMain))",
+      "teacher_action_id": "pass",
+      "teacher_action": "pass",
+      "jev_action_id": "activate:Giant's Boulder@ObjId(48)#0",
+      "heuristic_action_id": "cast:Kozilek's Command@ObjId(18):Main",
+      "jev_confidence": 0.18,
+      "jev_probabilities": {
+        "activate:Giant's Boulder@ObjId(48)#0": 0.46,
+        "cast:Kozilek's Command@ObjId(18):Main": 0.27,
+        "pass": 0.27
+      },
+      "legal_actions": [
+        "pass :: Pass priority.",
+        "cast:Kozilek's Command@ObjId(18):Main :: Cast Kozilek's Command.",
+        "activate:Giant's Boulder@ObjId(48)#0 :: Activate this engine-approved ability."
+      ]
+    }
+  ]
+}

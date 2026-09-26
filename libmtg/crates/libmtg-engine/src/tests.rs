@@ -3468,6 +3468,22 @@
     }
 
     #[test]
+    fn test_mana_planner_skips_unfunded_paid_filter() {
+        let mut state = make_state();
+        state.catalog = test_catalog();
+        let boulder = catalog_card("Giant's Boulder");
+        add_perm_with_def(&mut state, PlayerId::Us, &boulder, BattlefieldState::new());
+        let wastes = catalog_card("Wastes");
+        let wastes_id = add_perm_with_def(&mut state, PlayerId::Us, &wastes, BattlefieldState::new());
+        recompute(&mut state);
+
+        let residual = ManaCost { generic: 1, ..Default::default() };
+        let plan = auto_tap_plan_remaining(&state, PlayerId::Us, &residual);
+        assert_eq!(plan.first().map(|a| a.source_id), Some(wastes_id),
+            "an unfunded paid mana ability must not hide an available free source");
+    }
+
+    #[test]
     fn test_forge_spells_offered_by_mana_predictor_actually_cast_with_residual_source() {
         for (name, floating) in [
             ("Grim Monolith", 1),
