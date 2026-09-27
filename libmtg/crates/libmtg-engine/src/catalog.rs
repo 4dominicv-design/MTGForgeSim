@@ -1070,11 +1070,9 @@ impl CardDef {
     }
 
     pub(crate) fn legendary(&self) -> bool {
-        match &self.kind {
-            CardKind::Creature(c) => c.legendary,
-            CardKind::Planeswalker(_) => true,  // all PWs are legendary since 2013
-            _ => false,
-        }
+        self.supertypes.contains(&Supertype::Legendary) || matches!(
+            &self.kind, CardKind::Creature(c) if c.legendary
+        )
     }
 
     pub fn is_blue(&self) -> bool { self.colors.contains(&Color::Blue) }

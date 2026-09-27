@@ -10072,3 +10072,51 @@
             }
         }
     }
+
+    #[test]
+    fn test_legendary_artifacts_lands_and_choice_validation() {
+        for name in ["The One Ring", "Mox Opal", "Urborg, Tomb of Yawgmoth"] {
+            for valid_choice in [true, false] {
+                let mut state = make_state();
+                state.catalog = test_catalog();
+                let first = state.place_card(PlayerId::Us, name, Zone::Battlefield);
+                let second = state.place_card(PlayerId::Us, name, Zone::Battlefield);
+                let opponent = state.place_card(PlayerId::Opp, name, Zone::Battlefield);
+                let keep = if valid_choice { second } else { opponent };
+                state.set_strategy(PlayerId::Us, Box::new(strategy::TestStrategy::new(PlayerId::Us).legend_keep(keep)));
+                check_state_based_actions(&mut state, 1);
+                assert!(state.permanent_bf(if valid_choice { second } else { first }).is_some(), "{name}");
+                assert!(state.permanent_bf(if valid_choice { first } else { second }).is_none(), "{name}");
+                assert!(state.permanent_bf(opponent).is_some());
+                assert_eq!(state.graveyard_of(PlayerId::Us).filter(|o| o.catalog_key == name).count(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn test_legend_rule_leaves_nonlegendary_artifact_duplicates() {
+        let mut state = make_state();
+        state.catalog = test_catalog();
+        for _ in 0..2 { state.place_card(PlayerId::Us, "Grim Monolith", Zone::Battlefield); }
+        check_state_based_actions(&mut state, 1);
+        assert_eq!(state.permanents_of(PlayerId::Us).count(), 2);
+    }
+
+    #[test]
+    fn test_block_validation_rejects_duplicate_tapped_and_ground_vs_flying() {
+        let mut state = make_state();
+        for (name, keywords) in [("Flyer", vec![Keyword::Flying]), ("Ground", vec![]), ("Reach", vec![Keyword::Reach])] {
+            state.catalog.insert(name.into(), CardDef::vanilla_creature(name, 3, 3, &keywords));
+        }
+        let a = state.place_card(PlayerId::Opp, "Flyer", Zone::Battlefield);
+        let b = state.place_card(PlayerId::Opp, "Flyer", Zone::Battlefield);
+        let ground = state.place_card(PlayerId::Us, "Ground", Zone::Battlefield);
+        let reach = state.place_card(PlayerId::Us, "Reach", Zone::Battlefield);
+        let tapped = state.place_card(PlayerId::Us, "Reach", Zone::Battlefield);
+        state.permanent_bf_mut(tapped).unwrap().tapped = true;
+        state.combat_attackers = vec![a, b];
+        state.set_strategy(PlayerId::Us, Box::new(strategy::TestStrategy::new(PlayerId::Us)
+            .blocking(vec![(a, ground), (a, tapped), (a, reach), (b, reach)])));
+        do_step(&mut state, 1, PlayerId::Opp, &Step { kind: StepKind::DeclareBlockers, prio: false }, false);
+        assert_eq!(state.combat_blocks, vec![(a, reach)]);
+    }

@@ -29,6 +29,12 @@ pub trait Strategy {
     fn declare_blockers(&mut self, state: &SimState) -> Vec<(ObjId, ObjId)>;
     fn take_mulligan(&mut self, state: &SimState, mulligans_taken: u32) -> bool;
 
+    /// Choose which same-name legendary permanent to keep. The engine validates
+    /// the response; this choice neither targets nor sacrifices a permanent.
+    fn choose_legend_to_keep(&mut self, _state: &SimState, choices: &[ObjId]) -> Option<ObjId> {
+        choices.first().copied()
+    }
+
     /// Called when an ability resolves with a `ChoiceSpec` (CR "choose" ≠ "target").
     /// `effect_id` is the `ObjId` of the ability object that is resolving.
     /// Default: pick the first valid option.
@@ -316,6 +322,7 @@ pub struct TestStrategy {
     /// Forced sacrifice: pick the smallest-`ObjId` candidate (deterministic
     /// regardless of HashMap iteration order); false → trait default (first).
     sacrifice_min_id: bool,
+    legend_keep: Option<ObjId>,
     /// Library ordering: reverse the looked-at cards (proves OrderTop routes the
     /// arrangement through the strategy, not an engine sort); false → trait default.
     order_reverse: bool,
@@ -340,12 +347,13 @@ impl TestStrategy {
         TestStrategy {
             player_id, color: None, card_name: None, mode: None,
             put_first_candidate: false, surveil: None, sacrifice_min_id: false,
-            order_reverse: false,
+            order_reverse: false, legend_keep: None,
             attackers: Vec::new(), blockers: Vec::new(),
             block_order: None, damage_assignment: None,
             actions: std::collections::VecDeque::new(),
         }
     }
+    pub(crate) fn legend_keep(mut self, id: ObjId) -> Self { self.legend_keep = Some(id); self }
     pub(crate) fn color(mut self, c: Color) -> Self { self.color = Some(c); self }
     pub(crate) fn card_name(mut self, n: impl Into<String>) -> Self { self.card_name = Some(n.into()); self }
     pub(crate) fn mode(mut self, m: usize) -> Self { self.mode = Some(m); self }
@@ -371,6 +379,9 @@ impl Strategy for TestStrategy {
     fn declare_blockers(&mut self, _s: &SimState) -> Vec<(ObjId, ObjId)> { self.blockers.clone() }
     fn take_mulligan(&mut self, _s: &SimState, _m: u32) -> bool { false }
 
+    fn choose_legend_to_keep(&mut self, _state: &SimState, choices: &[ObjId]) -> Option<ObjId> {
+        self.legend_keep.or_else(|| choices.first().copied())
+    }
     fn choose_action(&mut self, _s: &SimState, _ap: PlayerId, legal: &[LegalAction]) -> LegalAction {
         // Pop the next scripted action if it is currently legal; otherwise pass.
         while let Some(a) = self.actions.pop_front() {

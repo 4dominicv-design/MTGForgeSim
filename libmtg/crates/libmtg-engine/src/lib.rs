@@ -2324,6 +2324,17 @@ impl SimState {
         self.objects.values().filter(move |c| c.owner == who && c.zone() == Some(Zone::Exile { on_adventure: true }))
     }
 
+    /// Number of counters of a kind on an object (zero for an absent object).
+    pub fn counter_count(&self, id: ObjId, kind: CounterType) -> u32 {
+        let Some(obj) = self.objects.get(&id) else { return 0; };
+        match kind {
+            CounterType::PlusOnePlusOne => obj.bf().map_or(0, |bf| bf.counters.max(0) as u32),
+            CounterType::Loyalty => obj.bf().map_or(0, |bf| bf.loyalty.max(0) as u32),
+            CounterType::Stun => obj.bf().map_or(0, |bf| bf.stun_counters),
+            _ => obj.counters.get(&kind).copied().unwrap_or(0),
+        }
+    }
+
     /// Iterate library in deck order (front = top). Yields `&GameObject` for each ObjId.
     pub fn library_of(&self, who: PlayerId) -> impl Iterator<Item = &GameObject> {
         let order = &self.player(who).library_order;
@@ -3828,8 +3839,29 @@ fn cast_spell(
 
 // ── Keyword helpers ───────────────────────────────────────────────────────────
 
-/// Return true if the permanent with `id` has the given keyword in the materialized (CE-applied) view.
-/// Always reads from materialized state so CEs that grant or remove keywords are respected.
+/// Pairwise blocking legality for current battlefield characteristics. This
+/// does not require an attack declaration, so pilots can also plan defense.
+pub fn can_block_pair(state: &SimState, attacker: ObjId, blocker: ObjId) -> bool {
+    let (Some(a), Some(b)) = (state.objects.get(&attacker), state.objects.get(&blocker)) else { return false; };
+    if a.controller == b.controller || a.bf().is_none()
+        || !b.bf().map_or(false, |bf| !bf.tapped) { return false; }
+    if ![attacker, blocker].iter().all(|&id| state.def_of(id).map_or(false, |d| d.is_creature())) { return false; }
+    let has = |id, kw| creature_has_keyword(id, kw, state);
+    !has(attacker, Keyword::Unblockable)
+        && !is_protected_from(attacker, blocker, state)
+        && has(attacker, Keyword::Shadow) == has(blocker, Keyword::Shadow)
+        && (!has(attacker, Keyword::Flying) || has(blocker, Keyword::Flying) || has(blocker, Keyword::Reach))
+}
+
+/// Current permission to attack, including summoning sickness and restrictions.
+pub fn can_attack_now(state: &SimState, id: ObjId) -> bool {
+    state.permanent_bf(id).map_or(false, |bf| !bf.tapped
+        && (!bf.entered_this_turn || creature_has_keyword(id, Keyword::Haste, state)))
+        && state.def_of(id).map_or(false, |d| d.is_creature())
+        && !crate::ir::executor::action_restricted(state, crate::ir::ability::ActionKind::Attack, id)
+}
+
+/// Read keywords from the current materialized characteristics.
 pub fn creature_has_keyword(id: ObjId, kw: Keyword, state: &SimState) -> bool {
     state.def_of(id)
         .map(|d| d.has_keyword(kw))
@@ -4175,26 +4207,19 @@ fn check_state_based_actions(
         // SBA: legend rule — if a player controls two or more legendary permanents with the
         // same name, that player chooses one to keep; the rest go to graveyard (rule 704.5j).
         for who in [PlayerId::Us, PlayerId::Opp] {
-            // Collect (name, id) for all legendary permanents controlled by `who`.
-            let mut seen: HashMap<String, ObjId> = HashMap::new();
-            let mut extras: Vec<ObjId> = Vec::new();
-            let legendaries: Vec<(String, ObjId)> = state.permanents_of(who)
-                .filter(|card| {
-                    state.def_of(card.id)
-                        .map_or(false, |d| d.legendary())
-                })
-                .map(|card| (card.catalog_key.clone(), card.id))
-                .collect();
-            for (name, id) in legendaries {
-                if let Some(_existing) = seen.get(&name) {
-                    extras.push(id); // keep the first one, sacrifice the later one
-                } else {
-                    seen.insert(name, id);
+            let mut groups: std::collections::BTreeMap<String, Vec<ObjId>> = std::collections::BTreeMap::new();
+            for card in state.permanents_of(who) {
+                if state.def_of(card.id).map_or(false, |d| d.legendary()) {
+                    groups.entry(card.catalog_key.clone()).or_default().push(card.id);
                 }
             }
-            for id in extras {
-                change_zone(id, ZoneId::Graveyard, state, t, who);
-                any = true;
+            for choices in groups.values().filter(|ids| ids.len() > 1) {
+                let keep = state.with_strategy(who, |s, st| s.choose_legend_to_keep(st, choices))
+                    .filter(|id| choices.contains(id)).unwrap_or(choices[0]);
+                for &id in choices.iter().filter(|&&id| id != keep) {
+                    change_zone(id, ZoneId::Graveyard, state, t, who);
+                    any = true;
+                }
             }
         }
 
@@ -4740,6 +4765,22 @@ fn handle_priority_round(
     handle_priority_round_from(state, t, ap, ap, None);
 }
 
+/// Inspect life immediately after paying for an already-legal priority action.
+/// Does not resolve the spell/ability or run a continuation priority window.
+pub fn life_after_priority_costs(
+    state: &SimState, ap: PlayerId, who: PlayerId, action: LegalAction,
+    us: Box<dyn Strategy>, opp: Box<dyn Strategy>,
+) -> Option<i32> {
+    let mut branch = state.fork_for_search(0);
+    branch.set_strategy(PlayerId::Us, us);
+    branch.set_strategy(PlayerId::Opp, opp);
+    let mut holder = who;
+    let mut passer = None;
+    let turn = branch.current_turn;
+    apply_priority_action(&mut branch, turn, ap, who, action, &mut holder, &mut passer);
+    (branch.invalid_actions == state.invalid_actions).then_some(branch.player(who).life)
+}
+
 /// Search helper: fork `state`, force one already-legal priority action, then
 /// let caller-supplied continuation strategies finish the current priority
 /// window. It does not advance to later phases or turns, and the priority
@@ -5086,12 +5127,13 @@ fn do_step(
             let nap = ap.opp();
             // Strategy decides which blockers to assign.
             let blocks = state.with_strategy(ap.opp(), |s, st| s.declare_blockers(st));
-            // Engine validation: drop illegal blocks (protection, etc.) as a safety net.
+            // A blocker can be assigned once; all declared pairs must be legal.
+            let mut used_blockers = std::collections::HashSet::new();
             let blocks: Vec<(ObjId, ObjId)> = blocks.into_iter()
-                .filter(|&(atk_id, blk_id)| {
-                    !creature_has_keyword(atk_id, Keyword::Unblockable, state)
-                        && !is_protected_from(atk_id, blk_id, state)
-                })
+                .filter(|&(atk_id, blk_id)| state.combat_attackers.contains(&atk_id)
+                    && state.objects.get(&blk_id).map_or(false, |o| o.controller == nap)
+                    && can_block_pair(state, atk_id, blk_id)
+                    && used_blockers.insert(blk_id))
                 .collect();
             for &(atk_id, blk_id) in &blocks {
                 let atk_name = state.objects.get(&atk_id).map(|p| p.catalog_key.as_str()).unwrap_or("");
