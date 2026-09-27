@@ -55,7 +55,7 @@ pub struct ManaCost {
 
 impl ManaCost {
     pub(crate) fn total_specific(&self) -> i32 { self.w + self.u + self.b + self.r + self.g + self.c }
-    pub(crate) fn mana_value(&self) -> i32 { self.total_specific() + self.generic }
+    pub fn mana_value(&self) -> i32 { self.total_specific() + self.generic }
 
     /// Reconstruct a compact display string (e.g. `ManaCost{generic:1,u:1}` → `"1U"`).
     pub(crate) fn display(&self) -> String {

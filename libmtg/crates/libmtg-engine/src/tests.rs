@@ -4370,6 +4370,7 @@
 
         let mut state = make_state();
         state.catalog.insert("Quantum Riddler".into(), def);
+        state.place_card(PlayerId::Us, "Mountain", Zone::Library);
         // Normal (non-warp) cast: alt_cost_index is None, so only the ETB-draw trigger fires.
         let before = state.player(PlayerId::Us).draws_this_turn;
         eff_enter_permanent(PlayerId::Us, "Quantum Riddler").call(&mut state, 1, &[]);
@@ -9449,6 +9450,29 @@
     }
 
     #[test]
+    fn test_funded_filter_does_not_consume_generic_mana_source() {
+        let mut state = make_state();
+        state.catalog = test_catalog();
+        let boulder = catalog_card("Giant's Boulder");
+        let boulder_id = add_perm_with_def(&mut state, PlayerId::Us, &boulder, BattlefieldState::new());
+        let wastes = catalog_card("Wastes");
+        let wastes_id = add_perm_with_def(&mut state, PlayerId::Us, &wastes, BattlefieldState::new());
+        let card_id = add_hand_card(&mut state, PlayerId::Us, "Grim Monolith");
+        state.player_mut(PlayerId::Us).pool.c = 1;
+        state.player_mut(PlayerId::Us).pool.total = 1;
+        state.current_turn = 1;
+        state.current_ap = state.player_id(PlayerId::Us);
+        state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+        recompute(&mut state);
+
+        let residual = ManaCost { generic: 1, ..Default::default() };
+        let plan = auto_tap_plan_remaining(&state, PlayerId::Us, &residual);
+        assert_eq!(plan.first().map(|a| a.source_id), Some(wastes_id));
+        assert!(!plan.iter().any(|a| a.source_id == boulder_id));
+        assert!(run_cast_submachine(&mut state, 1, PlayerId::Us, card_id, SpellFace::Main).is_some());
+    }
+
+    #[test]
     fn test_auto_mana_affordability_does_not_fund_planar_nexus_with_itself() {
         let mut state = make_state();
         state.catalog = test_catalog();
@@ -9464,21 +9488,9 @@
         let tomb = add_perm_with_def(&mut state, PlayerId::Us,
             &catalog_card("Ancient Tomb"), BattlefieldState::new());
         recompute(&mut state);
-        let mut diagnostic = state.fork_for_search(0);
-        diagnostic.set_strategy(PlayerId::Us, Box::new(strategy::AlwaysPass::new(PlayerId::Us)));
-        eprintln!("before: pool={:?}, potential={:?}, abilities={:?}, available={:?}, plan={:?}",
-            diagnostic.player(PlayerId::Us).pool,
-            diagnostic.potential_mana(PlayerId::Us),
-            [nexus, tomb].iter()
-                .map(|id| (*id, diagnostic.def_of(*id).unwrap().mana_abilities().iter()
-                    .map(|ma| (ma.costs.first_mana_cost(), ma.produces.clone(), ma.produces_count))
-                    .collect::<Vec<_>>())).collect::<Vec<_>>(),
-            enumerate_mana_abilities(&diagnostic, PlayerId::Us).iter()
-                .map(|a| (a.source_id, a.ability_index)).collect::<Vec<_>>(),
-            auto_tap_plan_remaining(&diagnostic, PlayerId::Us, &blue)
-                .iter().map(|a| (a.source_id, a.ability_index, a.color_choice)).collect::<Vec<_>>());
-        run_mana_loop(&mut diagnostic, 1, PlayerId::Us, &blue);
-        eprintln!("after: pool={:?}, log={:?}", diagnostic.player(PlayerId::Us).pool, diagnostic.log);
+        let plan = auto_tap_plan_remaining(&state, PlayerId::Us, &blue);
+        assert_eq!(plan.first().map(|a| a.source_id), Some(tomb),
+            "tap Tomb before Nexus's paid colored mode");
         assert!(can_pay_with_auto_mana(&state, PlayerId::Us, &blue, None));
         assert!(!can_pay_with_auto_mana(&state, PlayerId::Us, &blue, Some(nexus)),
             "a source reserved for a tap cost cannot also produce its payment");
@@ -9937,4 +9949,126 @@
         let has_mana = state.log.iter().any(|l| l.contains("add B to pool"));
         assert!(has_cast, "should have a Cast log line, got: {:?}", state.log);
         assert!(has_mana, "should have a mana production log line, got: {:?}", state.log);
+    }
+
+    #[test]
+    fn test_spirit_guide_cannot_fund_itself_but_can_fund_another_guide() {
+        for lands in [1, 2] {
+            let mut state = make_state();
+            state.catalog = test_catalog();
+            for _ in 0..lands {
+                add_perm_with_def(&mut state, PlayerId::Us,
+                    &catalog_card("Mountain"), BattlefieldState::new());
+            }
+            let spell = add_hand_card(&mut state, PlayerId::Us, "Simian Spirit Guide");
+            let other = add_hand_card(&mut state, PlayerId::Us, "Simian Spirit Guide");
+            state.current_turn = 1;
+            state.current_ap = state.player_id(PlayerId::Us);
+            state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+            recompute(&mut state);
+            let legal = strategy::collect_legal_actions(&state, PlayerId::Us);
+            let offered = legal.iter().any(|a| matches!(a,
+                LegalAction::CastSpell { card_id, .. } if *card_id == spell || *card_id == other));
+            assert_eq!(offered, lands == 2,
+                "a Guide needs three mana from sources other than itself");
+            assert_eq!(state.hand_size(PlayerId::Us), 2,
+                "affordability prediction must not exile live cards");
+            let cast = run_cast_submachine(&mut state, 1, PlayerId::Us, spell, SpellFace::Main);
+            assert_eq!(cast.is_some(), lands == 2);
+            if lands == 2 {
+                assert!(state.objects[&spell].in_zone(Zone::Stack));
+                assert!(state.objects[&other].in_zone(Zone::Exile { on_adventure: false }));
+            } else {
+                assert!(state.objects[&spell].in_zone(Zone::Hand { known: false }),
+                    "even a directly requested unaffordable cast must not exile itself");
+            }
+        }
+    }
+
+
+    #[test]
+    fn test_empty_library_draw_loses_at_next_sba_without_draw_events() {
+        let mut state = make_state();
+        state.catalog = test_catalog();
+        // Drawing the last card is safe. A subsequent failed attempt causes
+        // loss only at the next SBA, even if an effect later refills the deck.
+        state.place_card(PlayerId::Us, "Mountain", Zone::Library);
+        sim_draw(&mut state, PlayerId::Us, 1, false);
+        check_state_based_actions(&mut state, 1);
+        assert!(!state.done());
+        let pending = state.pending_triggers.len();
+        for _ in 0..210 { sim_draw(&mut state, PlayerId::Us, 1, false); }
+        assert!(!state.done(), "finish the resolving effect before checking SBAs");
+        assert_eq!(state.player(PlayerId::Us).draws_this_turn, 1);
+        assert_eq!(state.pending_triggers.len(), pending);
+        state.place_card(PlayerId::Us, "Mountain", Zone::Library);
+        let mut fork = state.fork_for_search(1);
+        check_state_based_actions(&mut fork, 1);
+        assert_eq!(fork.winner, Some(PlayerId::Opp));
+        check_state_based_actions(&mut state, 1);
+        assert_eq!(state.winner, Some(PlayerId::Opp));
+    }
+
+    #[test]
+    fn test_opal_taps_before_petal_sacrifice_under_trinisphere() {
+        for reverse in [false, true] {
+            let mut state = make_state();
+            state.catalog = test_catalog();
+            let mut names = vec!["Lotus Petal", "Mox Opal", "Trinisphere", "Wastes"];
+            if reverse { names.reverse(); }
+            for name in names { add_default_perm(&mut state, PlayerId::Us, name); }
+            let grim = add_hand_card(&mut state, PlayerId::Us, "Grim Monolith");
+            state.current_turn = 1;
+            state.current_ap = state.player_id(PlayerId::Us);
+            state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+            recompute(&mut state);
+            assert!(strategy::collect_legal_actions(&state, PlayerId::Us).iter().any(|a|
+                matches!(a, LegalAction::CastSpell { card_id, .. } if *card_id == grim)));
+            assert!(run_cast_submachine(&mut state, 1, PlayerId::Us, grim, SpellFace::Main).is_some(), "{:?}", state.log);
+        }
+    }
+
+    #[test]
+    fn test_burn_removes_planeswalker_loyalty() {
+        for (spell, damage) in [("Lightning Bolt", 3), ("Unholy Heat", 2)] {
+            let mut state = make_state();
+            state.catalog = test_catalog();
+            let karn = add_default_perm(&mut state, PlayerId::Opp, "Karn, the Great Creator");
+            state.permanent_bf_mut(karn).unwrap().loyalty = damage;
+            recompute(&mut state);
+            let def = catalog_card(spell);
+            build_spell_effect(&def, PlayerId::Us, ObjId::UNSET, 0, 0).1.call(&mut state, 1, &[karn]);
+            assert_eq!(state.permanent_bf(karn).unwrap().loyalty, 0);
+            check_state_based_actions(&mut state, 1);
+            assert!(state.permanent_bf(karn).is_none());
+        }
+    }
+
+    #[test]
+    fn test_tezzeret_emblem_animation_preserves_counters_and_survives_sba() {
+        for name in ["Grim Monolith", "Mystic Forge", "Manifold Key"] {
+            let mut state = make_state();
+            state.catalog = test_catalog();
+            let artifact = add_default_perm(&mut state, PlayerId::Us, name);
+            let tez = add_default_perm(&mut state, PlayerId::Us, "Tezzeret, Cruel Captain");
+            recompute(&mut state);
+            let def = catalog_card("Tezzeret, Cruel Captain");
+            let CardKind::Planeswalker(pw) = &def.kind else { panic!() };
+            let ultimate = pw.abilities.iter().find(|a| a.loyalty_delta() == Some(-7)).unwrap();
+            build_ability_effect(ultimate, PlayerId::Us, tez).call(&mut state, 1, &[]);
+            change_zone(tez, ZoneId::Graveyard, &mut state, 1, PlayerId::Us);
+            assert_eq!(state.emblems.len(), 1);
+            for (turn, expected) in [(1, 3), (2, 6)] {
+                do_step(&mut state, turn, PlayerId::Us,
+                    &Step { kind: StepKind::BeginCombat, prio: true }, true);
+                check_state_based_actions(&mut state, turn);
+                assert!(state.permanent_bf(artifact).is_some(), "{name}: {:?}", state.log);
+                assert_eq!(state.permanent_bf(artifact).unwrap().counters, expected);
+                for _ in 0..3 {
+                    recompute(&mut state);
+                    let creature = state.def_of(artifact).unwrap().as_creature().unwrap();
+                    assert_eq!((creature.power(), creature.toughness()), (expected, expected), "{name}");
+                }
+            }
+        }
     }

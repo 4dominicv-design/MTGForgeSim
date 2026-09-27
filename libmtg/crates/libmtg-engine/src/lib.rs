@@ -17,7 +17,7 @@
 //! - `CARD_INDEX.org` — how MTG mechanics decompose into IR primitives.
 
 use rand::{Rng, SeedableRng};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 mod catalog;
@@ -72,7 +72,7 @@ mod tests;
 
 /// Opaque game object identifier. Every player, card, token, and stack ability
 /// gets one at construction time and keeps it through all zone changes.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct ObjId(u64);
 
 /// Type of a counter placed on a game object.
@@ -780,10 +780,8 @@ pub struct EmblemInstance {
 
 // ── Recompute ─────────────────────────────────────────────────────────────────
 
-/// Fold game-accumulated object state (counters, temporary P/T mods) into a cloned `CardDef`
-/// before continuous-effect modifiers run. This makes counters and other game-state
-/// deltas visible to layer modifiers that inspect P/T (e.g. Tarmogoyf's self-referential
-/// P/T which would interact with a CE modifying it).
+/// Apply counters and temporary P/T adjustments after continuous effects have
+/// established the object's creature characteristics and base power/toughness.
 fn fold_game_state_into_def(def: &mut CardDef, obj: &GameObject) {
     let Some(bf) = obj.bf() else { return };
     if let CardKind::Creature(c) = &mut def.kind {
@@ -904,12 +902,6 @@ pub(crate) fn recompute(state: &mut SimState) {
                     def.colors = back.colors.clone();
                 }
             }
-        }
-
-        // Fold game-accumulated state (counters, temporary P/T mods).
-        {
-            let obj = state.objects.get(&id).unwrap();
-            fold_game_state_into_def(&mut def, obj);
         }
 
         // Zone-based castable default: cards in hand are castable, others are not
@@ -1034,6 +1026,16 @@ pub(crate) fn recompute(state: &mut SimState) {
             };
             (modifier)(&mut def, state);
             state.objects.get_mut(&id).unwrap().materialized = Some(def);
+        }
+    }
+
+    // A printed noncreature can now be a creature, and base-P/T setters must
+    // not erase its counters. Rebuild from catalog each time and fold once.
+    for &id in &ids {
+        let obj = state.objects.get_mut(&id).unwrap();
+        if let Some(mut def) = obj.materialized.take() {
+            fold_game_state_into_def(&mut def, obj);
+            obj.materialized = Some(def);
         }
     }
 
@@ -1402,6 +1404,8 @@ pub(crate) fn enumerate_mana_abilities(state: &SimState, who: PlayerId) -> Vec<M
     }
     // Hand-zone mana abilities (e.g. Simian Spirit Guide).
     for card in state.hand_of(who) {
+        // The spell being cast is reserved for the stack, not a hand mana source.
+        if state.casting_spell == Some(card.id) { continue; }
         if crate::ir::executor::mana_ability_restricted(state, card.id) { continue; }
         let mas = state.catalog.get(&card.catalog_key).map(|d| d.mana_abilities()).unwrap_or(&[]);
         for (idx, ma) in mas.iter().enumerate() {
@@ -1458,10 +1462,14 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
 
     let mut plan = Vec::new();
     let mut used: HashSet<ObjId> = HashSet::new();
+    // The action generator and the mana loop share this list. Planning from the
+    // same snapshot keeps an unfunded paid mode out of the plan entirely.
+    let available: HashSet<(ObjId, usize)> = enumerate_mana_abilities(state, who)
+        .into_iter().map(|a| (a.source_id, a.ability_index)).collect();
 
     // Helper: find a battlefield source producing `color` (or any if None).
     let find_bf = |state: &SimState, used: &HashSet<ObjId>, color: Option<Color>, prefer_large: bool| -> Option<(ObjId, usize, usize)> {
-        let mut sources = state.objects.iter().filter_map(|(id, c)| {
+        let sources = state.objects.iter().filter_map(|(id, c)| {
             if used.contains(id) { return None; }
             if c.controller != who || !c.in_zone(Zone::Battlefield) { return None; }
             // Null Rod / Karn: don't plan to tap an artifact whose abilities are restricted.
@@ -1490,18 +1498,30 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
                 score
             };
             let (idx, ma) = mas.iter().enumerate()
-                .filter(|(_, ma)| {
-                    ma.activatable
+                .filter(|(idx, ma)| {
+                    available.contains(&(*id, *idx))
+                        && ma.activatable
                         && ma.timing == ActivationTiming::Default // exclude LED, instant-only abilities
                         && matches!(ma.source_zone, SourceZone::Battlefield)
                         && (!ma_requires_tap(ma) || !bf.tapped)
                         && ma.condition.as_ref().map_or(true, |cond| obj_matches(cond, *id, state))
+                        && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
+                        // A paid filter (e.g. Giant's Boulder: pay {1}, add one)
+                        // cannot fill a generic shortfall: it adds no net mana.
+                        && (color.is_some() || ma.costs.first_mana_cost()
+                            .map_or(true, |mc| ma.produces_count as i32 > mc.mana_value()))
                         && color.map_or(true, |c| ma.produces.contains(&c))
                 })
                 .max_by_key(|(_, ma)| (coverage(ma), ma.produces_count))?;
             Some((*id, idx, ma.produces_count))
         });
-        if prefer_large { sources.max_by_key(|(_, _, count)| *count) } else { sources.next() }
+        sources.max_by_key(|(id, idx, count)| {
+            let ma = &state.def_of(*id).unwrap().mana_abilities()[*idx];
+            // Tap sources such as Mox Opal before sacrificing artifacts that
+            // can turn off metalcraft. Break ties identically in live/forked states.
+            (!ma.costs.requires_sac_self(), if prefer_large { *count } else { 0 },
+                std::cmp::Reverse(*id))
+        })
     };
 
     // Specific colorless pips ({C}) are not generic: they require a source
@@ -1515,12 +1535,16 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
             let bf = c.bf()?;
             let mas = state.def_of(*id).map(|d| d.mana_abilities()).unwrap_or(&[]);
             let (idx, ma) = mas.iter().enumerate()
-                .filter(|(_, ma)| {
-                    ma.activatable
+                .filter(|(idx, ma)| {
+                    available.contains(&(*id, *idx))
+                        && ma.activatable
                         && ma.timing == ActivationTiming::Default
                         && matches!(ma.source_zone, SourceZone::Battlefield)
                         && (!ma_requires_tap(ma) || !bf.tapped)
                         && ma.condition.as_ref().map_or(true, |cond| obj_matches(cond, *id, state))
+                        && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
+                        && ma.costs.first_mana_cost()
+                            .map_or(true, |mc| ma.produces_count as i32 > mc.mana_value())
                         // Colorless producers encode no W/U/B/R/G entries.
                         && ma.produces.is_empty()
                         && ma.produces_count > 0
@@ -1535,9 +1559,13 @@ pub fn auto_tap_plan_remaining(state: &SimState, who: PlayerId, cost: &ManaCost)
             if used.contains(&c.id) { return None; }
             if crate::ir::executor::mana_ability_restricted(state, c.id) { return None; }
             let mas = state.catalog.get(&c.catalog_key).map(|d| d.mana_abilities()).unwrap_or(&[]);
-            let (idx, _) = mas.iter().enumerate().find(|(_, ma)| {
-                ma.activatable
+            let (idx, _) = mas.iter().enumerate().find(|(idx, ma)| {
+                available.contains(&(c.id, *idx))
+                    && ma.activatable
                     && matches!(ma.source_zone, SourceZone::Hand)
+                    && ma.costs.first_mana_cost().map_or(true, |mc| state.player(who).pool.can_pay(&mc))
+                    && (color.is_some() || ma.costs.first_mana_cost()
+                        .map_or(true, |mc| ma.produces_count as i32 > mc.mana_value()))
                     && color.map_or(true, |col| ma.produces.contains(&col))
             })?;
             Some((c.id, idx))
@@ -1615,6 +1643,7 @@ fn execute_mana_activation(
     who: PlayerId,
     act: &ManaActivation,
 ) -> bool {
+    if state.casting_spell == Some(act.source_id) { return false; }
     let ma = state.def_of(act.source_id)
         .and_then(|d| d.mana_abilities().get(act.ability_index).cloned())
         .or_else(|| {
@@ -1698,9 +1727,25 @@ fn run_mana_loop(
 pub(crate) fn can_pay_with_auto_mana(
     state: &SimState, who: PlayerId, cost: &ManaCost, reserve_tap_source: Option<ObjId>,
 ) -> bool {
+    can_pay_with_auto_mana_context(state, who, cost, reserve_tap_source, state.casting_spell)
+}
+
+/// Reserve the announced spell while predicting its mana payment, just as the
+/// real cast path does. A Spirit Guide cannot be exiled to pay for itself.
+pub(crate) fn can_pay_spell_with_auto_mana(
+    state: &SimState, who: PlayerId, cost: &ManaCost, card_id: ObjId,
+) -> bool {
+    can_pay_with_auto_mana_context(state, who, cost, None, Some(card_id))
+}
+
+fn can_pay_with_auto_mana_context(
+    state: &SimState, who: PlayerId, cost: &ManaCost,
+    reserve_tap_source: Option<ObjId>, casting_spell: Option<ObjId>,
+) -> bool {
     if state.player(who).pool.can_pay(cost) { return true; }
-    if !state.potential_mana(who).can_pay(cost) { return false; }
     let mut trial = state.fork_for_search(0);
+    trial.casting_spell = casting_spell;
+    if !trial.potential_mana(who).can_pay(cost) { return false; }
     trial.set_strategy(who, Box::new(crate::strategy::AlwaysPass::new(who)));
     if let Some(source) = reserve_tap_source {
         if let Some(bf) = trial.permanent_bf_mut(source) { bf.tapped = true; }
@@ -1891,6 +1936,8 @@ pub struct PlayerState {
     pub(crate) sideboard: Vec<String>,
     /// Number of cards drawn this turn; reset each Untap. Used for Bowmasters / Tamiyo triggers.
     draws_this_turn: u8,
+    /// An unreplaced attempt to draw from an empty library, checked at the next SBA.
+    failed_draw: bool,
     /// Ordered library: front = top of deck. Draw pops from front, shuffle randomizes.
     pub library_order: std::collections::VecDeque<ObjId>,
     /// How many top cards the controller legitimately KNOWS (front-down), since the
@@ -1916,6 +1963,7 @@ impl PlayerState {
             pool: ManaPool::default(),
             sideboard: Vec::new(),
             draws_this_turn: 0,
+            failed_draw: false,
             library_order: std::collections::VecDeque::new(),
             known_top_len: 0,
             strategy: None,
@@ -1938,6 +1986,7 @@ impl PlayerState {
             pool: self.pool.clone(),
             sideboard: self.sideboard.clone(),
             draws_this_turn: self.draws_this_turn,
+            failed_draw: self.failed_draw,
             library_order: self.library_order.clone(),
             known_top_len: self.known_top_len,
             strategy: None,
@@ -1997,7 +2046,8 @@ pub struct SimState {
     pub stack: Vec<ObjId>,
     /// All objects in all zones, keyed by stable ObjId — cards (in any zone) AND
     /// card-less stack objects (abilities; see `GameObject.ability`).
-    pub objects: HashMap<ObjId, GameObject>,
+    // Stable iteration order is shared by live games and search forks.
+    pub objects: BTreeMap<ObjId, GameObject>,
     /// ID allocator — starts at 1; 0 is reserved as ObjId::UNSET.
     next_id: u64,
     /// Order in which cards entered each player's graveyard (oldest first). Used for display.
@@ -2140,7 +2190,7 @@ impl SimState {
             pending_triggers: Vec::new(),
             resolving_costs_ctx: CostsPaidCtx::default(),
             stack: Vec::new(),
-            objects: HashMap::new(),
+            objects: BTreeMap::new(),
             next_id: 0,
             graveyard_order: Vec::new(),
             linked_exile: HashMap::new(),
@@ -2491,6 +2541,7 @@ impl SimState {
 
         // Hand-zone zero-cost mana abilities (e.g. Simian Spirit Guide).
         for card in self.hand_of(who) {
+            if self.casting_spell == Some(card.id) { continue; }
             let mas = self.catalog.get(&card.catalog_key)
                 .map(|d| d.mana_abilities()).unwrap_or(&[]);
             let free: Vec<_> = mas.iter()
@@ -3144,6 +3195,19 @@ pub(crate) fn fire_event(
         return false; // original effect suppressed by replacement (not a prohibition)
     }
 
+    // An empty-library draw can still be replaced above. If it is not,
+    // remember the failed attempt for the next SBA; no card was drawn, so do
+    // not emit draw triggers or count it toward the successful-draw guard.
+    if let GameEvent::Draw { controller, .. } = &event {
+        if state.player(*controller).library_order.is_empty() {
+            let ps = state.player_mut(*controller);
+            ps.failed_draw = true;
+            state.log(t, *controller, "Attempted to draw from an empty library");
+            state.repl_depth -= 1;
+            return false;
+        }
+    }
+
     // Stage 3: Apply state mutation.
     do_effect(&event, state);
 
@@ -3248,6 +3312,7 @@ fn do_effect(event: &GameEvent, state: &mut SimState) {
             let top_id = ps.library_order.pop_front();
             ps.known_top_len = ps.known_top_len.saturating_sub(1); // top card left for hand
             if let Some(card_id) = top_id {
+                ps.draws_this_turn = ps.draws_this_turn.saturating_add(1);
                 state.set_card_zone(card_id, Zone::Hand { known: false });
             }
         }
@@ -3362,8 +3427,8 @@ pub(crate) fn change_zone(
 
 // matches_search_filter is defined in predicates.rs
 
-/// Draw one card for `who` through the event pipeline. Increments draws_this_turn, fires a Draw
-/// event (which handles the state mutation, logging, and trigger dispatch).
+/// Attempt a draw through the event pipeline. A completed draw increments
+/// draws_this_turn; replacements and failed attempts do not count as draws.
 fn sim_draw(state: &mut SimState, who: PlayerId, t: u8, is_natural: bool) {
     // Sanity guard: `draws_this_turn` is u8 — overflows silently at 256.
     // 200 draws in a single turn is almost certainly an unbounded-draw bug
@@ -3387,8 +3452,7 @@ fn sim_draw(state: &mut SimState, who: PlayerId, t: u8, is_natural: bool) {
             recent_log.iter().map(|s| format!("  {}", s)).collect::<Vec<_>>().join("\n"),
         );
     }
-    state.player_mut(who).draws_this_turn += 1;
-    let draw_index = state.player(who).draws_this_turn;
+    let draw_index = current + 1;
     // Peek the card about to be drawn (do_effect pops this same library top) so the log
     // can name it. Absent only on an empty library (no card is drawn then anyway).
     let card = state.player(who).library_order.front().copied();
@@ -4005,13 +4069,28 @@ fn check_state_based_actions(
     loop {
         let mut any = false;
 
-        // SBA: player with life ≤ 0 loses the game (rule 704.5a).
-        for who in [PlayerId::Us, PlayerId::Opp] {
-            if state.life_of(who) <= 0 {
-                state.log(t, who, format!("→ loses the game (life: {})", state.life_of(who)));
-                state.winner = Some(who.opp());
-                return; // game over — no further SBA processing
+        // Player-loss SBAs apply together: zero life (704.5a) or an
+        // unreplaced empty-library draw (704.5b). Both losing is a draw.
+        let loses = |who| state.life_of(who) <= 0 || state.player(who).failed_draw;
+        let us_loses = loses(PlayerId::Us);
+        let opp_loses = loses(PlayerId::Opp);
+        if us_loses || opp_loses {
+            for (who, lost) in [(PlayerId::Us, us_loses), (PlayerId::Opp, opp_loses)] {
+                if !lost { continue; }
+                let reason = if state.player(who).failed_draw {
+                    "attempted to draw from an empty library".to_string()
+                } else {
+                    format!("life: {}", state.life_of(who))
+                };
+                state.log(t, who, format!("→ loses the game ({reason})"));
             }
+            state.winner = match (us_loses, opp_loses) {
+                (true, false) => Some(PlayerId::Opp),
+                (false, true) => Some(PlayerId::Us),
+                _ => None,
+            };
+            state.terminal = true;
+            return;
         }
 
         // SBA: token in a zone other than the battlefield ceases to exist (rule 704.5d).

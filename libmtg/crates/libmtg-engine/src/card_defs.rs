@@ -5362,7 +5362,7 @@ fn transmute_artifact() -> CardDef {
                 .filter(|o| state.def_of(o.id).map_or(false, |d| d.types.contains(&CardType::Artifact)))
                 .map(|o| o.id)
                 .collect();
-            let Some(sacrificed) = state.with_strategy(who, |s, st| s.sacrifice_choice(who, &sacrifices, st)) else {
+            let Some(sacrificed) = state.with_strategy(who, |s, st| s.choose_transmute_sacrifice(source_id, who, &sacrifices, st)) else {
                 // Oracle: if no artifact is sacrificed, the search instruction is
                 // skipped as well, so the library is not shuffled.
                 return;
@@ -5374,7 +5374,15 @@ fn transmute_artifact() -> CardDef {
                 .filter(|o| state.def_of(o.id).map_or(false, |d| d.types.contains(&CardType::Artifact)))
                 .map(|o| o.id)
                 .collect();
-            let chosen = state.with_strategy(who, |s, st| s.choose_for_effect(source_id, &candidates, st));
+            // Offer payment information to the pilot after the sacrifice. The
+            // complete legal search list remains available to other strategies.
+            let payable: Vec<ObjId> = candidates.iter().copied().filter(|id| {
+                let mv = state.def_of(*id).map(|d| mana_value(d.mana_cost())).unwrap_or(0);
+                let cost = ManaCost { generic: (mv - sacrificed_mv).max(0), ..Default::default() };
+                can_pay_with_auto_mana(state, who, &cost, None)
+            }).collect();
+            let chosen = state.with_strategy(who, |s, st|
+                s.choose_transmute_target(source_id, &candidates, &payable, st));
             let Some(found) = chosen.filter(|id| candidates.contains(id)) else {
                 state.shuffle_library(who);
                 return;

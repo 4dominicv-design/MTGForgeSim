@@ -190,6 +190,18 @@ pub trait Strategy {
         candidates.first().copied()
     }
 
+    /// Resolution choices for Transmute Artifact. The original choice hooks
+    /// remain the default so existing strategies keep their behavior.
+    fn choose_transmute_sacrifice(&mut self, _source: ObjId, who: PlayerId,
+        choices: &[ObjId], state: &SimState) -> Option<ObjId> {
+        self.sacrifice_choice(who, choices, state)
+    }
+
+    fn choose_transmute_target(&mut self, source: ObjId, choices: &[ObjId],
+        _payable: &[ObjId], state: &SimState) -> Option<ObjId> {
+        self.choose_for_effect(source, choices, state)
+    }
+
     /// "Put them back in any order" (Ponder, scry-then-arrange, etc.): given the
     /// looked-at library cards (current top-to-bottom), return them in the desired
     /// top-to-bottom order — a genuine player decision, not an engine sort.
@@ -498,7 +510,7 @@ fn spell_is_affordable(
     }
     cost = crate::apply_casting_cost_rules(cost, def);
     let mana_is_usable = !def.mana_cost().is_empty()
-        && crate::can_pay_with_auto_mana(state, who, &cost, None);
+        && crate::can_pay_spell_with_auto_mana(state, who, &cost, card_id);
     let base_payable = if mana_is_usable {
         true
     } else {

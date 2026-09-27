@@ -1,6 +1,7 @@
 use libmtg_engine::{
     AnnounceChoice, AnnounceOptions, LegalAction, ObjId, PlayerId, SimState, Strategy,
-    TargetGap, WishOption,
+    TargetGap, WishOption, TargetSpec, PhaseKind, TurnPosition, StepKind, pick_targets,
+    simulate_priority_action, AlwaysPass, parse_mana_cost,
 };
 
 use crate::profile::{keep_v0, role_for, ForgeRole};
@@ -26,10 +27,74 @@ pub(crate) fn forge_announce_choice(
 /// tactical search will replace this priority table incrementally.
 pub struct ForgeStrategy {
     who: PlayerId,
+    resolution_only: bool,
 }
 
 impl ForgeStrategy {
-    pub fn new(who: PlayerId) -> Self { Self { who } }
+    pub fn new(who: PlayerId) -> Self { Self { who, resolution_only: false } }
+
+    fn preview_action(&self, state: &SimState, ap: PlayerId, action: LegalAction) -> SimState {
+        let pilot = Box::new(Self { who: self.who, resolution_only: true });
+        let other = Box::new(AlwaysPass::new(self.who.opp()));
+        let (us, opp): (Box<dyn Strategy>, Box<dyn Strategy>) = if self.who == PlayerId::Us {
+            (pilot, other)
+        } else { (other, pilot) };
+        simulate_priority_action(state, ap, self.who, action, 0, us, opp)
+    }
+
+    fn untapped_monoliths(&self, state: &SimState) -> usize {
+        state.permanents_of(self.who).filter(|o|
+            matches!(o.catalog_key.as_str(), "Grim Monolith" | "Basalt Monolith")
+                && o.bf().map_or(false, |bf| !bf.tapped)).count()
+    }
+
+    fn transmute_improves_board(&self, state: &SimState, ap: PlayerId, action: &LegalAction) -> bool {
+        let branch = self.preview_action(state, ap, action.clone());
+        if branch.invalid_actions != state.invalid_actions || branch.player(self.who).life <= 0 {
+            return false;
+        }
+        let new_value = branch.permanents_of(self.who)
+            .filter(|o| state.library_of(self.who).any(|old| old.id == o.id))
+            .map(|o| Self::card_priority(&o.catalog_key)).max();
+        let lost_value = state.permanents_of(self.who)
+            .filter(|o| branch.permanent_bf(o.id).is_none())
+            .map(|o| Self::card_priority(&o.catalog_key)
+                - if o.bf().map_or(false, |bf| bf.tapped) { 30 } else { 0 }).max().unwrap_or(0);
+        new_value.map_or(false, |value| value > lost_value)
+    }
+
+    fn tez_target_score(&self, state: &SimState, target: ObjId) -> Option<i32> {
+        let obj = state.objects.get(&target)?;
+        if obj.controller != self.who { return None; }
+        let bf = obj.bf()?;
+        let def = state.def_of(target)?;
+        if bf.tapped {
+            match obj.catalog_key.as_str() {
+                "Grim Monolith" | "Basalt Monolith" => return Some(110),
+                "Relic of Sauron" => return Some(100),
+                "Manifold Key" => return Some(90),
+                _ => {}
+            }
+        }
+        if def.is_artifact() && def.is_creature() { return Some(70); }
+        None
+    }
+
+    // Key should untap a productive permanent we control. Prefer the Monoliths
+    // and Relic (net mana gain after Key's {1}), then another Ring activation.
+    fn key_target_score(&self, state: &SimState, source: ObjId, target: ObjId) -> Option<i32> {
+        let obj = state.objects.get(&target)?;
+        if target == source || obj.controller != self.who || !obj.bf()?.tapped {
+            return None;
+        }
+        if !state.def_of(target)?.is_artifact() { return None; }
+        match obj.catalog_key.as_str() {
+            "Grim Monolith" | "Basalt Monolith" => Some(100),
+            "Relic of Sauron" => Some(90),
+            "The One Ring" => Some(80),
+            _ => None,
+        }
+    }
 
     fn card_priority(name: &str) -> i32 {
         match name {
@@ -65,7 +130,8 @@ impl Strategy for ForgeStrategy {
         !keep_v0(&hand, mulligans_taken)
     }
 
-    fn choose_action(&mut self, state: &SimState, _ap: PlayerId, legal: &[LegalAction]) -> LegalAction {
+    fn choose_action(&mut self, state: &SimState, ap: PlayerId, legal: &[LegalAction]) -> LegalAction {
+        if self.resolution_only { return LegalAction::Pass; }
         // Make a land drop whenever the engine offers one.
         if let Some(a) = legal.iter().find(|a| matches!(a, LegalAction::LandDrop(_))) {
             return a.clone();
@@ -82,41 +148,99 @@ impl Strategy for ForgeStrategy {
             let Some(id) = card_id else { continue };
             let name = state.objects.get(&id).map(|o| o.catalog_key.as_str()).unwrap_or("");
 
-            // Basalt Monolith can pay for its own {3}: untap activation by
-            // tapping for {C}{C}{C}.  Activating that ability while Basalt is
-            // already untapped returns to the exact same game state and a
-            // priority-table pilot can loop forever.  Grim can exhibit the
-            // same bad pattern when other mana is available.  These actions
-            // are legal Magic, so keep them in the rules engine; the pilot
-            // simply declines the strategically zero-progress version.
-            if matches!(action, LegalAction::ActivateAbility { .. })
-                && matches!(name, "Basalt Monolith" | "Grim Monolith")
-                && state.objects.get(&id).and_then(|o| o.bf()).map_or(false, |bf| !bf.tapped)
-            {
-                continue;
+            let monolith_untap = matches!(action, LegalAction::ActivateAbility { .. })
+                && matches!(name, "Basalt Monolith" | "Grim Monolith");
+            if monolith_untap {
+                let own_main = ap == self.who && matches!(state.current_phase,
+                    Some(TurnPosition::Phase(PhaseKind::PreCombatMain | PhaseKind::PostCombatMain)));
+                let opponent_end = ap != self.who && matches!(state.current_phase,
+                    Some(TurnPosition::Step(StepKind::End)));
+                if !state.stack.is_empty() || !(own_main || opponent_end)
+                    || !state.permanent_bf(id).map_or(false, |bf| bf.tapped) { continue; }
+                let branch = self.preview_action(state, ap, action.clone());
+                // Don't tap one Monolith just to untap another, or pay life for
+                // speculative setup. Spells and Key take precedence below.
+                if branch.invalid_actions != state.invalid_actions
+                    || branch.player(self.who).life < state.player(self.who).life
+                    || self.untapped_monoliths(&branch) <= self.untapped_monoliths(state) { continue; }
             }
+            if name == "Transmute Artifact" && matches!(action, LegalAction::CastSpell { .. })
+                && !self.transmute_improves_board(state, ap, action) { continue; }
 
-            // The priority pilot cannot improve its position by untapping an
-            // untapped artifact, and it has no combat plan for Key's second
-            // ability. Avoid retrying these actions at every priority window.
+            // Keep setup mana available through upkeep/draw and only spend it
+            // on a useful untap in our main phase with an empty stack.
             if let LegalAction::ActivateAbility { ability_index, .. } = action {
                 if name == "Manifold Key" {
-                    if *ability_index != 0 { continue; }
-                    let has_tapped_artifact = state.permanents_of(self.who).any(|perm| {
-                        perm.id != id
-                            && perm.bf().map_or(false, |bf| bf.tapped)
-                            && state.def_of(perm.id).map_or(false, |d| d.is_artifact())
-                    });
-                    if !has_tapped_artifact { continue; }
+                    if *ability_index != 0 || ap != self.who || !state.stack.is_empty()
+                        || !matches!(state.current_phase, Some(TurnPosition::Phase(
+                            PhaseKind::PreCombatMain | PhaseKind::PostCombatMain)))
+                    {
+                        continue;
+                    }
+                    if !state.permanents_of(self.who)
+                        .any(|perm| self.key_target_score(state, id, perm.id).is_some())
+                    {
+                        continue;
+                    }
                 }
             }
 
-            let score = Self::card_priority(name);
+            let score = if let LegalAction::ActivateAbility { ability_index, .. } = action {
+                if name == "Tezzeret, Cruel Captain" {
+                    match *ability_index {
+                        2 => 120, // Establish the recurring combat payoff.
+                        0 => {
+                            let Some(value) = state.permanents_of(self.who)
+                                .filter_map(|o| self.tez_target_score(state, o.id)).max() else { continue; };
+                            value
+                        }
+                        1 => 85,
+                        _ => continue,
+                    }
+                } else if monolith_untap { 10 } else { Self::card_priority(name) }
+            } else { Self::card_priority(name) };
             if best.as_ref().map_or(true, |(s, _)| score > *s) {
                 best = Some((score, action.clone()));
             }
         }
         best.map(|(_, a)| a).unwrap_or(LegalAction::Pass)
+    }
+
+    fn choose_transmute_sacrifice(&mut self, _source: ObjId, _who: PlayerId,
+        choices: &[ObjId], state: &SimState) -> Option<ObjId> {
+        choices.iter().copied().max_by_key(|id| {
+            let obj = &state.objects[id];
+            let mv = state.def_of(*id).map(|d| parse_mana_cost(d.mana_cost()).mana_value()).unwrap_or(0);
+            let spent = obj.bf().map_or(false, |bf| bf.tapped);
+            let duplicate = state.permanents_of(self.who)
+                .filter(|o| o.catalog_key == obj.catalog_key).count() > 1;
+            mv * 15 + if spent { 40 } else { 0 } + if duplicate { 30 } else { 0 }
+                - Self::card_priority(&obj.catalog_key)
+        })
+    }
+
+    fn choose_transmute_target(&mut self, _source: ObjId, _choices: &[ObjId],
+        payable: &[ObjId], state: &SimState) -> Option<ObjId> {
+        payable.iter().copied().max_by_key(|id| {
+            let name = &state.objects[id].catalog_key;
+            let duplicate = state.permanents_of(self.who).any(|o| &o.catalog_key == name);
+            Self::card_priority(name) - if duplicate { 50 } else { 0 }
+        })
+    }
+
+    fn choose_targets(&mut self, state: &SimState, card_id: ObjId,
+                      legal: &[ObjId], spec: &TargetSpec) -> Vec<ObjId> {
+        if state.objects.get(&card_id).map(|o| o.catalog_key.as_str()) == Some("Manifold Key") {
+            return legal.iter()
+                .filter_map(|&id| self.key_target_score(state, card_id, id).map(|score| (score, id)))
+                .max_by_key(|(score, _)| *score)
+                .map(|(_, id)| vec![id]).unwrap_or_default();
+        }
+        if state.objects.get(&card_id).map(|o| o.catalog_key.as_str()) == Some("Tezzeret, Cruel Captain") {
+            return legal.iter().filter_map(|&id| self.tez_target_score(state, id).map(|score| (score, id)))
+                .max_by_key(|(score, _)| *score).map(|(_, id)| vec![id]).unwrap_or_default();
+        }
+        pick_targets(spec, legal, state)
     }
 
     fn announce(&mut self, state: &SimState, card_id: ObjId, options: &AnnounceOptions) -> AnnounceChoice {
@@ -186,4 +310,101 @@ impl Strategy for BaselineOpponentStrategy {
     fn player_id(&self) -> PlayerId { self.who }
     fn plan_gap(&self, _state: &SimState) -> TargetGap { TargetGap { mana: 0.5, threat: 0.5, interaction: 0.5 } }
     fn card_fills(&self, _card_id: ObjId, _gap: &TargetGap, _state: &SimState) -> f64 { 0.5 }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use libmtg_engine::{build_catalog, PlayerState, Zone, StepKind};
+
+    fn key_position() -> (SimState, ObjId, ObjId, ObjId, ObjId) {
+        let mut state = SimState::new(PlayerState::new("forge"), PlayerState::new("red"));
+        state.catalog = build_catalog();
+        let key = state.place_card(PlayerId::Us, "Manifold Key", Zone::Battlefield);
+        let grim = state.place_card(PlayerId::Us, "Grim Monolith", Zone::Battlefield);
+        let sphere = state.place_card(PlayerId::Us, "Trinisphere", Zone::Battlefield);
+        let opposing = state.place_card(PlayerId::Opp, "Grim Monolith", Zone::Battlefield);
+        state.permanent_bf_mut(grim).unwrap().tapped = true;
+        state.permanent_bf_mut(opposing).unwrap().tapped = true;
+        state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+        (state, key, grim, sphere, opposing)
+    }
+
+    #[test]
+    fn key_targets_our_tapped_mana_artifact() {
+        let (state, key, grim, sphere, opposing) = key_position();
+        let mut pilot = ForgeStrategy::new(PlayerId::Us);
+        assert_eq!(pilot.choose_targets(&state, key,
+            &[sphere, opposing, grim], &TargetSpec::None), vec![grim]);
+    }
+
+    #[test]
+    fn key_waits_for_own_main_phase_and_a_productive_target() {
+        let (mut state, key, grim, _, _) = key_position();
+        let mut pilot = ForgeStrategy::new(PlayerId::Us);
+        let action = LegalAction::ActivateAbility { source_id: key, ability_index: 0 };
+        let legal = vec![LegalAction::Pass, action.clone()];
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &legal), action);
+        assert_eq!(pilot.choose_action(&state, PlayerId::Opp, &legal), LegalAction::Pass);
+        state.current_phase = Some(TurnPosition::Step(StepKind::Upkeep));
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &legal), LegalAction::Pass);
+        state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+        state.stack.push(key); // a nonempty stack is sufficient for this timing check
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &legal), LegalAction::Pass);
+        state.stack.clear();
+        state.permanent_bf_mut(grim).unwrap().tapped = false;
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &legal), LegalAction::Pass);
+    }
+    #[test]
+    fn monolith_waits_until_main_phase() {
+        let (mut state, _, grim, _, _) = key_position();
+        state.player_mut(PlayerId::Us).pool.c = 4;
+        state.player_mut(PlayerId::Us).pool.total = 4;
+        let mut pilot = ForgeStrategy::new(PlayerId::Us);
+        let action = LegalAction::ActivateAbility { source_id: grim, ability_index: 0 };
+        let legal = vec![LegalAction::Pass, action.clone()];
+        state.current_phase = Some(TurnPosition::Step(StepKind::Upkeep));
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &legal), LegalAction::Pass);
+        state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &legal), action);
+        assert!(state.permanent_bf(grim).unwrap().tapped, "preview must not change live state");
+    }
+
+    #[test]
+    fn transmute_requires_an_affordable_upgrade() {
+        for extra_mana in [0, 2] {
+            let mut state = SimState::new(PlayerState::new("forge"), PlayerState::new("red"));
+            state.catalog = build_catalog();
+            state.current_phase = Some(TurnPosition::Phase(PhaseKind::PreCombatMain));
+            let grim = state.place_card(PlayerId::Us, "Grim Monolith", Zone::Battlefield);
+            state.permanent_bf_mut(grim).unwrap().tapped = true;
+            state.place_card(PlayerId::Us, "Mystic Forge", Zone::Library);
+            let spell = state.place_card(PlayerId::Us, "Transmute Artifact", Zone::Hand { known: false });
+            state.player_mut(PlayerId::Us).pool.u = 2;
+            state.player_mut(PlayerId::Us).pool.c = extra_mana;
+            state.player_mut(PlayerId::Us).pool.total = 2 + extra_mana;
+            let action = LegalAction::CastSpell { card_id: spell, face: libmtg_engine::SpellFace::Main };
+            let mut pilot = ForgeStrategy::new(PlayerId::Us);
+            let chosen = pilot.choose_action(&state, PlayerId::Us, &[LegalAction::Pass, action.clone()]);
+            assert_eq!(chosen, if extra_mana == 2 { action } else { LegalAction::Pass });
+            assert!(state.permanent_bf(grim).is_some(), "preview must not sacrifice live cards");
+        }
+    }
+
+    #[test]
+    fn tez_uses_ultimate_and_productive_untaps() {
+        let (mut state, _, grim, sphere, opposing) = key_position();
+        let tez = state.place_card(PlayerId::Us, "Tezzeret, Cruel Captain", Zone::Battlefield);
+        let zero = LegalAction::ActivateAbility { source_id: tez, ability_index: 0 };
+        let tutor = LegalAction::ActivateAbility { source_id: tez, ability_index: 1 };
+        let ultimate = LegalAction::ActivateAbility { source_id: tez, ability_index: 2 };
+        let mut pilot = ForgeStrategy::new(PlayerId::Us);
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &[zero.clone(), tutor.clone(), ultimate.clone()]), ultimate);
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &[zero.clone(), tutor.clone()]), zero);
+        assert_eq!(pilot.choose_targets(&state, tez, &[sphere, opposing, grim], &TargetSpec::None), vec![grim]);
+        state.permanent_bf_mut(grim).unwrap().tapped = false;
+        assert_eq!(pilot.choose_action(&state, PlayerId::Us, &[zero, tutor.clone()]), tutor);
+    }
+
 }

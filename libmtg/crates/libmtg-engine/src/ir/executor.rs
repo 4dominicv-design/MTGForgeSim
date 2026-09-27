@@ -148,8 +148,12 @@ pub(crate) fn execute_mut(action: &Action, state: &mut SimState, env: &mut BindE
                     let protected = src.map_or(false,
                         |s| crate::predicates::is_protected_from(id, s, state));
                     if !protected {
+                        let is_planeswalker = state.def_of(id)
+                            .map_or(false, |d| d.types.contains(&crate::CardType::Planeswalker));
+                        let is_creature = state.def_of(id).map_or(false, |d| d.is_creature());
                         if let Some(bf) = state.permanent_bf_mut(id) {
-                            bf.damage += n;
+                            if is_planeswalker { bf.loyalty = (bf.loyalty - n.max(0)).max(0); }
+                            if is_creature { bf.damage += n.max(0); }
                         }
                     }
                 }
