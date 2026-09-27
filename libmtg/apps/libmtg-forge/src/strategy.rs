@@ -28,13 +28,18 @@ pub(crate) fn forge_announce_choice(
 pub struct ForgeStrategy {
     who: PlayerId,
     resolution_only: bool,
+    remaining_actions: Option<usize>,
 }
 
 impl ForgeStrategy {
-    pub fn new(who: PlayerId) -> Self { Self { who, resolution_only: false } }
+    pub fn new(who: PlayerId) -> Self { Self { who, resolution_only: false, remaining_actions: None } }
+
+    pub(crate) fn bounded(who: PlayerId, actions: usize) -> Self {
+        Self { who, resolution_only: false, remaining_actions: Some(actions) }
+    }
 
     fn preview_action(&self, state: &SimState, ap: PlayerId, action: LegalAction) -> SimState {
-        let pilot = Box::new(Self { who: self.who, resolution_only: true });
+        let pilot = Box::new(Self { who: self.who, resolution_only: true, remaining_actions: None });
         let other = Box::new(AlwaysPass::new(self.who.opp()));
         let (us, opp): (Box<dyn Strategy>, Box<dyn Strategy>) = if self.who == PlayerId::Us {
             (pilot, other)
@@ -43,7 +48,7 @@ impl ForgeStrategy {
     }
 
     fn costs_are_survivable(&self, state: &SimState, ap: PlayerId, action: &LegalAction) -> bool {
-        let pilot: Box<dyn Strategy> = Box::new(Self { who: self.who, resolution_only: true });
+        let pilot: Box<dyn Strategy> = Box::new(Self { who: self.who, resolution_only: true, remaining_actions: None });
         let other: Box<dyn Strategy> = Box::new(AlwaysPass::new(self.who.opp()));
         let (us, opp) = if self.who == PlayerId::Us { (pilot, other) } else { (other, pilot) };
         life_after_priority_costs(state, ap, self.who, action.clone(), us, opp).map_or(false, |life| life > 0)
@@ -228,6 +233,10 @@ impl Strategy for ForgeStrategy {
 
     fn choose_action(&mut self, state: &SimState, ap: PlayerId, legal: &[LegalAction]) -> LegalAction {
         if self.resolution_only { return LegalAction::Pass; }
+        if let Some(left) = self.remaining_actions.as_mut() {
+            if *left == 0 { return LegalAction::Pass; }
+            *left -= 1;
+        }
         // Make a land drop whenever the engine offers one.
         if let Some(a) = legal.iter().find(|a| matches!(a, LegalAction::LandDrop(_))) {
             return a.clone();
@@ -419,10 +428,12 @@ impl Strategy for ForgeStrategy {
 /// strategy seam ready for archetype-specific policies.
 pub struct BaselineOpponentStrategy {
     who: PlayerId,
+    remaining_actions: Option<usize>,
 }
 
 impl BaselineOpponentStrategy {
-    pub fn new(who: PlayerId) -> Self { Self { who } }
+    pub fn new(who: PlayerId) -> Self { Self { who, remaining_actions: None } }
+    pub(crate) fn bounded(who: PlayerId, actions: usize) -> Self { Self { who, remaining_actions: Some(actions) } }
 }
 
 impl Strategy for BaselineOpponentStrategy {
@@ -435,6 +446,10 @@ impl Strategy for BaselineOpponentStrategy {
     fn take_mulligan(&mut self, _state: &SimState, mulligans_taken: u32) -> bool { mulligans_taken == 0 }
 
     fn choose_action(&mut self, _state: &SimState, _ap: PlayerId, legal: &[LegalAction]) -> LegalAction {
+        if let Some(left) = self.remaining_actions.as_mut() {
+            if *left == 0 { return LegalAction::Pass; }
+            *left -= 1;
+        }
         legal.iter().find(|a| matches!(a, LegalAction::LandDrop(_))).cloned()
             .or_else(|| legal.iter().find(|a| matches!(a, LegalAction::CastSpell { .. })).cloned())
             .or_else(|| legal.iter().find(|a| matches!(a, LegalAction::ActivateAbility { .. })).cloned())

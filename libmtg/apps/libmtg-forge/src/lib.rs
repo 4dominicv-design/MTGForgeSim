@@ -24,3 +24,6 @@ pub use jev::{
     compare_jev_to_search, jev_check_from_env, JevCheckSummary, JevCompareSummary, JevConfig,
     JevDisagreement, JevForgeAgent, JevMetric,
 };
+
+pub mod lookahead;
+pub mod comparison;

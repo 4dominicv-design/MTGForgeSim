@@ -10120,3 +10120,32 @@
         do_step(&mut state, 1, PlayerId::Opp, &Step { kind: StepKind::DeclareBlockers, prio: false }, false);
         assert_eq!(state.combat_blocks, vec![(a, reach)]);
     }
+
+    #[test]
+    fn test_search_sampling_ignores_actual_unknown_allocation() {
+        let mut state = make_state();
+        state.catalog = test_catalog();
+        let known = state.place_card(PlayerId::Us, "Mox Opal", Zone::Library);
+        state.place_card(PlayerId::Us, "Island", Zone::Library);
+        state.place_card(PlayerId::Us, "Mountain", Zone::Library);
+        state.player_mut(PlayerId::Us).known_top_len = 1;
+        let revealed = state.place_card(PlayerId::Opp, "Lightning Bolt", Zone::Hand { known: true });
+        let hand = state.place_card(PlayerId::Opp, "Island", Zone::Hand { known: false });
+        let library = state.place_card(PlayerId::Opp, "Mountain", Zone::Library);
+        state.place_card(PlayerId::Opp, "Mountain", Zone::Library);
+        let mut altered = state.fork_for_search(1);
+        altered.player_mut(PlayerId::Us).library_order.swap(1,2);
+        altered.objects.get_mut(&hand).unwrap().set_zone(Zone::Library);
+        altered.objects.get_mut(&library).unwrap().set_zone(Zone::Hand { known: false });
+        for id in &mut altered.player_mut(PlayerId::Opp).library_order { if *id == library { *id = hand; } }
+        let a = state.sampled_search_state(PlayerId::Us, 97);
+        let b = altered.sampled_search_state(PlayerId::Us, 97);
+        for who in [PlayerId::Us, PlayerId::Opp] {
+            assert_eq!(a.player(who).library_order, b.player(who).library_order);
+            assert_eq!(a.hand_of(who).map(|o| o.id).collect::<Vec<_>>(), b.hand_of(who).map(|o| o.id).collect::<Vec<_>>());
+        }
+        assert_eq!(a.player(PlayerId::Us).library_order.front(), Some(&known));
+        assert_eq!(a.known_hand_of(PlayerId::Opp).map(|o| o.id).collect::<Vec<_>>(), vec![revealed]);
+        assert_eq!(state.objects[&hand].zone(), Some(Zone::Hand { known: false }));
+        assert_eq!(state.player(PlayerId::Opp).library_order.front(), Some(&library));
+    }

@@ -2324,6 +2324,42 @@ impl SimState {
         self.objects.values().filter(move |c| c.owner == who && c.zone() == Some(Zone::Exile { on_adventure: true }))
     }
 
+    /// Sample unknown cards under an open-decklist assumption. Known own top
+    /// cards and revealed opponent hand cards stay fixed; real hidden allocation
+    /// and library order do not influence the sample for a given seed.
+    pub fn sampled_search_state(&self, viewer: PlayerId, seed: u64) -> Self {
+        use rand::seq::SliceRandom;
+        let mut out = self.fork_for_search(seed);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        for who in [viewer, viewer.opp()] {
+            let visible_top = if who == viewer {
+                let forge = self.permanents_of(who).any(|o| o.catalog_key == "Mystic Forge");
+                self.player(who).known_top_len.max(if forge { 1 } else { 0 })
+            } else { 0 };
+            let known: Vec<_> = self.player(who).library_order.iter().take(visible_top).copied().collect();
+            let mut pool: Vec<_> = self.library_of(who).filter(|o| !known.contains(&o.id)).map(|o| o.id).collect();
+            let hidden_hand: Vec<_> = if who != viewer {
+                self.hand_of(who).filter(|o| o.zone() == Some(Zone::Hand { known: false })).map(|o| o.id).collect()
+            } else { Vec::new() };
+            pool.extend(hidden_hand.iter().copied());
+            pool.sort_by(|a, b| self.objects[a].catalog_key.cmp(&self.objects[b].catalog_key).then(a.cmp(b)));
+            pool.shuffle(&mut rng);
+            let (hand, library) = pool.split_at(hidden_hand.len());
+            for &id in hand { out.objects.get_mut(&id).unwrap().set_zone(Zone::Hand { known: false }); }
+            for &id in library { out.objects.get_mut(&id).unwrap().set_zone(Zone::Library); }
+            out.player_mut(who).library_order = known.iter().chain(library).copied().collect();
+            out.player_mut(who).known_top_len = known.len();
+        }
+        out.log.clear();
+        out.decision_log.clear();
+        recompute(&mut out);
+        out
+    }
+
+    pub fn has_player_protection(&self, who: PlayerId) -> bool {
+        self.player(who).protection_from_everything
+    }
+
     /// Number of counters of a kind on an object (zero for an absent object).
     pub fn counter_count(&self, id: ObjId, kind: CounterType) -> u32 {
         let Some(obj) = self.objects.get(&id) else { return 0; };

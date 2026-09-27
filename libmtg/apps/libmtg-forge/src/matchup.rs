@@ -273,7 +273,7 @@ fn simulate_one(
     )
 }
 
-fn ensure_supported(
+pub(crate) fn ensure_supported(
     label: &str,
     deck: &Decklist,
     catalog: &std::collections::HashMap<String, CardDef>,

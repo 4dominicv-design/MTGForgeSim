@@ -58,6 +58,20 @@ enum Command {
         #[arg(long, default_value_t = 1)] seed: u64,
         #[arg(long, default_value_t = 12)] max_turns: u8,
     },
+    /// Compare multiple Forge lists/opponents with reproducible reports and optional matchup lookahead.
+    CompareDecks {
+        manifest: PathBuf,
+        output: PathBuf,
+        #[arg(long, default_value_t = 100)] games: u64,
+        #[arg(long, default_value_t = 1)] seed: u64,
+        #[arg(long, default_value_t = 20)] max_turns: u8,
+        #[arg(long, value_enum, default_value = "heuristic")] pilot: libmtg_forge::comparison::PilotSelection,
+        #[arg(long, default_value_t = 1)] samples: usize,
+        #[arg(long, default_value_t = 4)] candidates: usize,
+        #[arg(long, default_value_t = 2)] depth: usize,
+        #[arg(long, default_value_t = 8)] search_decisions: usize,
+        #[arg(long)] trace: bool,
+    },
     /// Compare the baseline Forge pilot to the bounded rollout pilot against an inert opponent.
     /// Diagnostic only: inspect decision traces and final position scores before training.
     SearchSmoke {
@@ -138,6 +152,14 @@ fn run_cli() -> Result<(), String> {
             let o = load(&opponent)?;
             let result = run_paired_matchup(&a, &b, &o, games, seed, max_turns)?;
             println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        }
+        Command::CompareDecks { manifest, output, games, seed, max_turns, pilot, samples, candidates, depth, search_decisions, trace } => {
+            let cfg = libmtg_forge::comparison::ComparisonConfig {
+                games, seed, max_turns, pilot, trace,
+                search: libmtg_forge::lookahead::LookaheadConfig { samples, candidates, continuation_actions: depth, decisions_per_game: search_decisions },
+            };
+            let report = libmtg_forge::comparison::compare_decks(&manifest, &output, cfg)?;
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({"output": output, "complete": report.complete, "results": report.results})).unwrap());
         }
         Command::SearchSmoke { deck, seed, max_turns, rollouts } => {
             let d = load(&deck)?;
